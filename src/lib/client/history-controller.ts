@@ -212,12 +212,22 @@ export class HistoryController {
     return this.#state.tokenConfigured || Boolean(this.#state.rateLimit?.authenticated);
   }
 
+  /**
+   * Built-in data costs nothing, so none of the GitHub budgets apply to it.
+   * The demo loads completely for every visitor, with or without a token.
+   */
+  #isBuiltin(): boolean {
+    return this.#state.meta?.dataSource === 'builtin';
+  }
+
   #budget(table: { authenticated: number; anonymous: number }): number {
+    if (this.#isBuiltin()) return Number.POSITIVE_INFINITY;
     return this.#authenticated() ? table.authenticated : table.anonymous;
   }
 
   /** True when background prefetching should stop to leave quota for real interactions. */
   #quotaExhausted(): boolean {
+    if (this.#isBuiltin()) return false;
     const rateLimit = this.#state.rateLimit;
     if (!rateLimit) return false;
     const floor = this.#authenticated() ? RATE_LIMIT_FLOOR.authenticated : RATE_LIMIT_FLOOR.anonymous;
@@ -455,6 +465,9 @@ export class HistoryController {
    * trees would be spent for nothing.
    */
   #treeBudget(count: number): number {
+    // Built-in trees are local, so reading one at every commit is free and makes
+    // every position exact rather than rebuilt.
+    if (this.#isBuiltin()) return count;
     if (count <= this.#budget(DETAIL_BUDGET)) return 2;
     return this.#budget(TREE_BUDGET);
   }
@@ -563,7 +576,7 @@ export class HistoryController {
     try {
       const budget = this.#budget(DETAIL_BUDGET);
       const commits = this.#state.commits;
-      const target = Math.min(commits.length, budget);
+      const target = Number.isFinite(budget) ? Math.min(commits.length, budget) : commits.length;
       const limitReason =
         target < commits.length
           ? this.#authenticated()
@@ -635,7 +648,9 @@ export class HistoryController {
    * cheaper than downloading every diff to find the same answer.
    */
   async #runProbes(generation: number, ref: RepoRef, branch: string): Promise<void> {
-    if (!this.#authenticated()) return; // too expensive on the anonymous limit
+    // Path probes cost a request each, which the anonymous limit cannot spare.
+    // Built-in data has no limit to spare.
+    if (!this.#authenticated() && !this.#isBuiltin()) return;
     const commits = this.#state.commits;
     const headSha = commits[commits.length - 1]?.sha;
     if (!headSha) return;

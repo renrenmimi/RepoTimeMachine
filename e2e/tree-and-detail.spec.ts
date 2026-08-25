@@ -3,21 +3,21 @@ import { commitSubject, openRepo, REPOS, transport } from './helpers';
 
 test.describe('evolving file tree', () => {
   test('starts nearly empty and fills in as the timeline advances', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     const t = transport(page);
 
     await t.slider.fill('0');
-    await expect(page.getByText('1 file')).toBeVisible();
+    await expect(page.getByText('6 files')).toBeVisible();
 
-    await t.slider.fill('63');
-    await expect(page.getByText(/\d{3} files/)).toBeVisible();
+    await t.slider.fill('15');
+    await expect(page.getByText(/\d{2,} files/)).toBeVisible();
   });
 
   test('expands and collapses folders', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     // Rows carry their full path as a title, which is the only unambiguous handle.
     const app = page.locator('[role="treeitem"] button[title="app"]');
-    const arena = page.locator('[role="treeitem"] button[title="app/arena"]');
+    const arena = page.locator('[role="treeitem"] button[title="app/lessons"]');
 
     // Top-level folders start open.
     await expect(arena).toBeVisible();
@@ -28,8 +28,8 @@ test.describe('evolving file tree', () => {
   });
 
   test('marks what the selected commit changed', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
-    await transport(page).slider.fill('63');
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('15');
     await page.waitForTimeout(600);
 
     const changed = page.locator('[role="treeitem"][data-status]');
@@ -38,34 +38,36 @@ test.describe('evolving file tree', () => {
   });
 
   test('filters paths', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     const filter = page.getByLabel('Filter file paths in the tree');
 
-    await filter.fill('arena-clock');
-    await expect(page.getByText('arena-clock.tsx')).toBeVisible();
-    await expect(page.getByText('globals.css')).toHaveCount(0);
+    await filter.fill('scroll-lock');
+    await expect(page.getByText('scroll-lock.ts').first()).toBeVisible();
+    await expect(page.getByText('tokens.css')).toHaveCount(0);
 
     await filter.fill('zzzzz');
     await expect(page.getByText(/No paths match/)).toBeVisible();
   });
 
   test('labels generated and binary files', async ({ page }) => {
-    await openRepo(page, REPOS.tiny);
-    await transport(page).slider.fill('4');
-    await page.waitForTimeout(500);
-    const badges = page.locator('[role="treeitem"] >> text=/^(binary|generated)$/');
-    expect(await badges.count()).toBeGreaterThanOrEqual(0);
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('15');
+    await page.waitForTimeout(600);
+
+    // The demo ships a lockfile and a generated index, both of which are labelled.
+    await page.getByLabel('Filter file paths in the tree').fill('lock');
+    await expect(page.getByText('generated', { exact: true }).first()).toBeVisible();
   });
 
   test('states how the tree was reconstructed', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     const badge = page.locator('[class*="fidelity"]').first();
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText(/exact|rebuilt|≈|no snapshot/);
   });
 
   test('shows the most recent change to a selected file', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
 
     await page.getByLabel('Filter file paths in the tree').fill('app-shell');
@@ -87,24 +89,24 @@ test.describe('evolving file tree', () => {
 
 test.describe('commit detail', () => {
   test('shows message, author, timestamp and a link to the real commit', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await expect(commitSubject(page)).not.toHaveText('');
     await expect(page.getByText(/UTC/)).toBeVisible();
 
-    const link = page.locator('a[href*="/commit/"]').first();
-    await expect(link).toHaveAttribute('href', /^https:\/\/github\.com\/renrenmimi\/DrillLab\/commit\/[0-9a-f]{40}$/);
-    await expect(link).toHaveAttribute('rel', /noopener/);
+    // Built-in commits have no repository to open, so the sha is plain text.
+    await expect(page.locator('a[href*="/commit/"]')).toHaveCount(0);
+    await expect(page.locator('[class*="shaPlain"]')).toHaveCount(1);
   });
 
   test('lists files changed with additions and deletions', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1200);
     await expect(page.getByRole('heading', { name: 'Files changed' })).toBeVisible();
     await expect(page.locator('[class*="fileItem"]').first()).toBeVisible();
   });
 
   test('opens a readable patch on demand', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
 
     const firstFile = page.locator('[class*="fileButton"]').first();
@@ -117,7 +119,7 @@ test.describe('commit detail', () => {
   });
 
   test('closes the patch when the timeline moves on', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
     await page.locator('[class*="fileButton"]').first().click();
     await expect(page.locator('[aria-label^="Diff for"]').first()).toBeVisible();
@@ -128,7 +130,7 @@ test.describe('commit detail', () => {
   });
 
   test('explains why a milestone fired', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await transport(page).slider.fill('0');
     await page.waitForTimeout(600);
 
@@ -139,7 +141,7 @@ test.describe('commit detail', () => {
 
 test.describe('insights', () => {
   test('moves between the three views with the keyboard', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     const growth = page.getByRole('tab', { name: 'Growth' });
     await growth.click();
     await expect(growth).toHaveAttribute('aria-selected', 'true');
@@ -153,7 +155,7 @@ test.describe('insights', () => {
   });
 
   test('offers a text alternative for the growth chart', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
 
     const chart = page.getByRole('img', { name: /Repository growth across/ });
@@ -165,25 +167,25 @@ test.describe('insights', () => {
   });
 
   test('labels the language mix an estimate and says what it excluded', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
     await expect(page.getByText('estimate', { exact: true })).toBeVisible();
     await expect(page.getByText(/Estimated from file extensions, not from file contents/)).toBeVisible();
   });
 
   test('states the milestone disclaimer', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.getByRole('tab', { name: /Milestones/ }).click();
     await expect(page.getByText(/pattern matches on file paths, commit metadata and tags/)).toBeVisible();
     await expect(page.getByText(/not what anyone intended/)).toBeVisible();
   });
 
   test('searches commit messages inside the loaded range', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.getByRole('tab', { name: 'Commits' }).click();
 
     const search = page.getByLabel(/Search commit messages/);
-    await search.fill('mobile');
+    await search.fill('drawer');
     await expect(page.locator('[class*="commitItem"]').first()).toBeVisible();
     const hits = await page.locator('[class*="commitItem"]').count();
     expect(hits).toBeGreaterThan(0);
@@ -193,10 +195,10 @@ test.describe('insights', () => {
   });
 
   test('jumps to a commit from the list', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     await page.getByRole('tab', { name: 'Commits' }).click();
     await page.locator('[class*="commitItem"]').nth(3).click();
-    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('60');
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('12');
   });
 });
 
@@ -227,8 +229,23 @@ test.describe('loaded range honesty', () => {
   });
 
   test('calls a complete history full', async ({ page }) => {
-    await openRepo(page, REPOS.tiny);
-    await expect(page.getByText('full history — 5 commits')).toBeVisible();
+    await openRepo(page, REPOS.demo);
+    await expect(page.getByText('full history — 16 commits')).toBeVisible();
     await expect(page.getByText(/latest \d+ of/)).toHaveCount(0);
+  });
+
+  test('reports full coverage for the built-in demo, with no gaps', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await page.waitForTimeout(1800);
+
+    await expect(page.getByText('diffs loaded for 16 of 16 commits')).toBeVisible();
+    // Every position is read from a real tree, so nothing is carried forward.
+    await expect(page.getByText('carried forward')).toHaveCount(0);
+
+    for (const index of ['0', '5', '10', '15']) {
+      await page.getByRole('slider', { name: /Commit position/ }).fill(index);
+      await page.waitForTimeout(250);
+      await expect(page.locator('[class*="fidelity"]').first()).toHaveText('exact');
+    }
   });
 });
