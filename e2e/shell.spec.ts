@@ -4,12 +4,12 @@ import {
   builtinBadge,
   collectProblems,
   demoButton,
+  expectNoForeignGitHubLinks,
   expectNoHorizontalOverflow,
   landingInput,
   landingLoadButton,
   openRepo,
   quotaMeter,
-  REMOVED_PERSONAL_REPOS,
   REPOS,
   repoUrl,
 } from './helpers';
@@ -37,23 +37,36 @@ test.describe('initial shell', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Learning Platform' })).toBeVisible();
     await expect(demoButton(page)).toBeVisible();
     await expect(page.getByText(/curated, synthetic history/)).toBeVisible();
-    await expect(page.getByText(/16 commits · no GitHub account · 0 API requests/)).toBeVisible();
+    await expect(page.getByText(/16 commits · no GitHub account · 0 GitHub requests/)).toBeVisible();
 
     // One H1 on the page, and the demo is a section under it.
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   });
 
-  test('names no personal repository anywhere in the interface', async ({ page }) => {
-    for (const path of ['/', repoUrl(REPOS.demo), repoUrl(REPOS.medium)]) {
-      await page.goto(path);
-      await page.waitForTimeout(1200);
-      const text = await page.evaluate(() => document.body.innerText);
-      const html = await page.content();
-      for (const name of REMOVED_PERSONAL_REPOS) {
-        expect(text, `${name} in text of ${path}`).not.toContain(name);
-        expect(html, `${name} in markup of ${path}`).not.toContain(name);
-      }
-    }
+  test('links to no GitHub repository other than this project', async ({ page }) => {
+    await page.goto('/');
+    await expectNoForeignGitHubLinks(page);
+
+    await openRepo(page, REPOS.demo);
+    await page.waitForTimeout(1200);
+    await expectNoForeignGitHubLinks(page);
+
+    // A live repository may link to itself, and to nothing else.
+    await openRepo(page, REPOS.medium);
+    await page.waitForTimeout(1200);
+    await expectNoForeignGitHubLinks(page, REPOS.medium);
+  });
+
+  test('offers no repository as an example in the input or its errors', async ({ page }) => {
+    await page.goto('/');
+    // The placeholder is the generic form, not somebody's repository.
+    await expect(landingInput(page)).toHaveAttribute('placeholder', 'owner/repository');
+
+    await landingInput(page).fill('not-a-repo');
+    await landingLoadButton(page).click();
+    const message = await appAlert(page).innerText();
+    expect(message).toContain('owner/repository');
+    expect(message).not.toMatch(/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+/);
   });
 
   test('loads the built-in demo in one action, with no GitHub request', async ({ page }) => {
@@ -89,7 +102,8 @@ test.describe('initial shell', () => {
     await page.waitForTimeout(1200);
     await expect(page.locator('a[href*="/commit/"]')).toHaveCount(0);
     await expect(page.locator('main a[href*="github.com"]')).toHaveCount(0);
-    await expect(page.getByText(/curated, synthetic history/).first()).toBeVisible();
+    // The disclosure is repeated; at least one instance is on screen at any width.
+    await expect(page.getByText(/curated, synthetic history/).filter({ visible: true }).first()).toBeVisible();
   });
 
   test('distinguishes built-in from live without relying on colour', async ({ page }) => {
@@ -100,7 +114,7 @@ test.describe('initial shell', () => {
 
     await openRepo(page, REPOS.medium);
     await expect(page.getByText('Live repository')).toBeVisible();
-    await expect(page.getByText(/Read from GitHub/)).toBeVisible();
+    await expect(quotaMeter(page)).toBeVisible();
   });
 
   test('does not autoplay on arrival', async ({ page }) => {
@@ -181,17 +195,7 @@ test.describe('repository input', () => {
     await expect(page).toHaveURL(/repo=rtm-fixtures%2Fsample-app/);
   });
 
-  test('uses a neutral placeholder and a neutral validation example', async ({ page }) => {
-    await page.goto('/');
-    await expect(landingInput(page)).toHaveAttribute('placeholder', 'owner/repository');
 
-    await landingInput(page).fill('not-a-repo');
-    await landingLoadButton(page).click();
-    const message = await appAlert(page).innerText();
-    for (const name of REMOVED_PERSONAL_REPOS) {
-      expect(message).not.toContain(name);
-    }
-  });
 });
 
 test.describe('states', () => {
@@ -289,5 +293,23 @@ test.describe('layout', () => {
     await page.getByRole('tab', { name: 'Commits' }).click();
     await page.waitForTimeout(300);
     expect(problems).toEqual([]);
+  });
+});
+
+test.describe('document structure', () => {
+  test('has exactly one H1 in every state', async ({ page }) => {
+    for (const path of ['/', repoUrl(REPOS.demo), repoUrl(REPOS.medium), repoUrl(REPOS.missing)]) {
+      await page.goto(path);
+      await page.waitForTimeout(1200);
+      await expect(page.getByRole('heading', { level: 1 }), path).toHaveCount(1);
+    }
+  });
+
+  test('names the current view in the heading once a timeline is open', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/built-in demo timeline/);
+
+    await openRepo(page, REPOS.medium);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/sample-app — commit timeline/);
   });
 });

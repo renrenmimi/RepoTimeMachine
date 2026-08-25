@@ -16,7 +16,8 @@
     "test:live": "node scripts/live-smoke.mjs",
     "fixtures": "node scripts/record-fixtures.mjs",
     "screenshots": "node scripts/screenshots.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e"
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e",
+    "token-canary": "node scripts/token-canary.mjs"
   },
   "dependencies": {
     "next": "^16.3.2",

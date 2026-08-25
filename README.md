@@ -1,11 +1,17 @@
 # Repo Time Machine
 
-Turn the Git history of a public GitHub repository into a timeline you can play.
+Turn the Git history of a repository into a timeline you can play.
 
-Paste `owner/repository` or a GitHub URL. Repo Time Machine loads the default
-branch, reconstructs the file tree at each commit, and lets you scrub or play
-through the history while the tree fills in, files change, and the commit detail
-follows along.
+There are two ways in:
+
+- **the built-in demo** — a curated sixteen-commit history that needs no GitHub
+  account and makes no GitHub requests;
+- **any public GitHub repository** — paste `owner/repository` or a URL and it
+  reads the default branch through GitHub's REST API.
+
+Either way, the tool reconstructs the file tree at each commit and lets you scrub
+or play through the history while the tree fills in, files change, and the commit
+detail follows along.
 
 It answers questions that are awkward to answer on GitHub itself:
 
@@ -32,18 +38,47 @@ what it knows. GitHub's API does not hand out a cheap answer to "what did the
 tree look like at commit N", and most tools that claim to show it are quietly
 guessing. This one says which parts it measured and which parts it inferred.
 
-## Demos
+## The built-in demo
 
-Four repositories with different history shapes:
+`Learning Platform` is a curated sixteen-commit history describing how a learning
+product might plausibly grow: a shell, then design tokens, then models, lessons,
+practice, a coding workspace, learning paths, a dashboard, and finally a pass for
+responsive layout and accessibility.
 
-| Repository | Commits | What it shows |
-| --- | --- | --- |
-| [`renrenmimi/renren-across-tabs`](https://github.com/renrenmimi/renren-across-tabs) | ~5 | The whole history fits on one screen. |
-| [`renrenmimi/DataData`](https://github.com/renrenmimi/DataData) | ~32 | A course project that grew a structure early. |
-| [`renrenmimi/DrillLab`](https://github.com/renrenmimi/DrillLab) | ~64 | A few days of work with a visible framework moment. |
-| [`renrenmimi/PetNote`](https://github.com/renrenmimi/PetNote) | ~246 | Months of history; shows the loaded-range limits. |
+It is **synthetic**. The commits, authors, object ids, file paths and diffs are
+invented; nothing is copied from, or reproduces, any real repository. It exists so
+the tool can demonstrate itself without reading anybody's account.
 
-Any other public repository works too.
+Because it ships with the application:
+
+- it makes **zero GitHub requests** and needs no token;
+- it is identical for every visitor, so a shared link always shows the same thing;
+- every timeline position is **exact**, because a full tree is stored for all
+  sixteen commits.
+
+The interface says which mode you are in. Built-in data carries a
+`Built-in demo · 0 GitHub requests` badge, the GitHub quota meter is hidden, and
+commits show their sha as plain text rather than as a link, because there is no
+repository to open.
+
+### Why it replaced a list of real projects
+
+Earlier versions shipped a demo list of the author's own repositories. That put
+personal project names, file trees and commit messages into the product, the
+fixtures, the tests and the documentation for no functional reason. One synthetic
+history does the same job without exposing anything.
+
+Earlier public commits still contain those references; this change removes them
+from the current tree rather than rewriting history.
+
+## Live GitHub mode
+
+Enter `owner/repository`, a GitHub URL, or a clone URL. Everything documented
+below — loaded ranges, tree reconstruction, caching, rate limits, milestones —
+applies to this mode. The built-in demo is served locally and bypasses all of it.
+
+Unknown `demo/*` references are not special: they go down the ordinary GitHub path
+and produce the ordinary not-found result.
 
 ## What "loaded history" means
 
@@ -122,6 +157,10 @@ The browser never talks to GitHub. Every request goes through a route handler
 under `/api/gh/*`, which means the token stays on the server and the Content
 Security Policy can restrict `connect-src` to `'self'`.
 
+Every response carries `meta.dataSource`, which is `builtin` or `github`. The
+interface switches on that field rather than on any visible label, so it can never
+be wrong about which mode it is in.
+
 | Route | GitHub endpoint | Cache |
 | --- | --- | --- |
 | `/api/gh/repo` | `/repos/{o}/{r}` | 300s |
@@ -147,10 +186,18 @@ so the UI does not depend on the shape of GitHub's JSON.
 | Commit diffs | background: up to 400 with a token, 12 without |
 | Milestone path probes | up to 10, only with a token |
 
-Two rules keep this in bounds:
+None of it applies to the built-in demo, which is served locally.
 
-- **Nothing is fetched per commit during the initial load.** Metadata, commits,
-  tags and two trees are enough to render; everything else arrives afterwards.
+Four rules keep it in bounds:
+
+- **The first usable screen is the selected commit.** Metadata, then the commit
+  list, then that commit's tree and diff — concurrently. Tags, remaining
+  checkpoints, background diffs and milestone probes all queue behind it.
+- **Nothing is fetched per commit during the initial load.**
+- **Trees are only read where diffs cannot reach.** If every diff in the range is
+  going to be loaded anyway, a baseline tree plus the selected one already makes
+  every position exact, so no further trees are requested. A five-commit
+  repository therefore costs two tree reads, not five.
 - **Background work stops** when the observed remaining quota drops below a floor
   (60 authenticated, 12 anonymous), and is **cancelled outright** when the visitor
   switches repository.
@@ -184,7 +231,9 @@ from when it was first fetched, so presenting the number as live would be a smal
 lie. Hover it for the exact age and reset time.
 
 When the limit is reached, the error state names the limit, shows when the window
-resets, and explains that a self-hosted deployment can raise it with a token.
+resets, explains that a self-hosted deployment can raise it with a token, and
+offers the built-in demo as an alternative. Choosing it swaps the data source and
+says so — the requested repository is never silently replaced with synthetic data.
 
 ## Optional token setup
 
@@ -200,8 +249,25 @@ GITHUB_TOKEN=github_pat_...
 - Classic token: create it with **no scopes ticked**.
 - Fine-grained token: **Public repositories (read-only)** is enough.
 
-On Vercel, add `GITHUB_TOKEN` as a **server-side** environment variable. Do not
-prefix it with `NEXT_PUBLIC_`; that prefix is what makes a variable public.
+The built-in demo needs **no token and no GitHub quota**, so a deployment with no
+token configured still has something complete to show.
+
+### On Vercel
+
+```bash
+vercel env add GITHUB_TOKEN production
+# paste the token when prompted, then redeploy
+vercel --prod
+```
+
+Or in the dashboard: **Settings → Environment Variables**, name `GITHUB_TOKEN`,
+scope it to the environments you want, and leave it as a plain (server-side)
+variable.
+
+Do not prefix it with `NEXT_PUBLIC_`; that prefix is exactly what would publish it
+to the browser. The variable is read only inside route handlers, is never logged,
+and never appears in a response body — the e2e suite asserts the last part against
+a real production build.
 
 ## Security
 
@@ -352,8 +418,8 @@ Explicit goals, and how they are met:
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint
-npm test            # vitest, 336 tests, no network
-npm run test:e2e    # production build + playwright, 112 tests, no network
+npm test            # vitest, no network
+npm run test:e2e    # production build + playwright, no network
 npm run verify      # all four, in order
 ```
 
@@ -374,6 +440,16 @@ Component tests (jsdom) cover the transport controls, the tree markers and the
 patch fallbacks, including that hostile commit messages, author names, file names
 and patch content render as text and create no elements.
 
+A dedicated suite pins the built-in demo: exactly sixteen commits, sixteen unique
+valid object ids, chronological timestamps, a detail record and an exact tree for
+every commit, a first tree that differs meaningfully from the last, every position
+projectable, statistics derived through the normal `buildGrowthSeries`,
+`estimateLanguages` and `buildActivityMap` paths, and no `fetch` call anywhere in
+building or serving it. A second suite pins the routing: the demo never reaches
+`api.github.com`, arbitrary `demo/*` references fall through to the ordinary
+not-found path, and the test fixtures are unreachable unless `RTM_FIXTURE_MODE` is
+explicitly set.
+
 ### End-to-end (Playwright)
 
 Playwright runs against a **real production build**. `RTM_FIXTURE_MODE=1` makes
@@ -384,27 +460,31 @@ spending rate limit. **No token is provided**, so the suite also proves the
 anonymous path works.
 
 Three projects: desktop, a Pixel 7 for the narrow layout, and a browser reporting
-`prefers-reduced-motion: reduce`.
+`prefers-reduced-motion: reduce`. Most specs run against the built-in demo; the
+synthetic fixture repositories are used where a test is specifically about the
+live GitHub path.
 
 ### Fixtures
 
-`fixtures/` holds sanitised recordings from public repositories, plus synthetic
-bundles for the cases GitHub cannot provide on demand: a one-commit repository,
-an empty repository, a 640-commit history, and directives that make the server
-produce rate-limit, private-repository and timeout failures.
+`fixtures/` is entirely synthetic. No real account's repository metadata, file
+tree or commit messages are stored there. It holds a five-commit and a
+twelve-commit stand-in for live repositories, a one-commit repository, an empty
+repository, a 640-commit history for the pagination paths, and directives that
+make the server produce rate-limit, private-repository and timeout failures.
 
-Sanitising drops e-mail addresses and avatar URLs, keeps only the fields the
-application reads, and caps patches. A detail bundle stores only what a
-commit-detail response adds over the list response, and a tree for any commit is
-derived from the nearest recorded one plus the diffs in between — the same
-reconstruction the client performs. That keeps the whole fixture set to about
-1.5 MB of JSON.
+A detail bundle stores only what a commit-detail response adds over the list
+response, and a tree for any commit is derived from the nearest recorded one plus
+the diffs in between — the same reconstruction the client performs.
 
-Re-record with:
+Regenerate with:
 
 ```bash
-GITHUB_TOKEN=... npm run fixtures
+npm run fixtures                 # synthetic bundles only
+npm run fixtures -- owner/repo   # optional, opt-in recording of a named repository
 ```
+
+Recording is opt-in and must name the repository on the command line, so nothing
+is captured by accident.
 
 ### Optional live smoke test
 
@@ -417,8 +497,12 @@ RTM_BASE_URL=http://127.0.0.1:3311 npm run test:live
 ```
 
 It checks the adapter against what GitHub actually returns today: ordering,
-pagination totals, patch caps, tree entry types, and that a malformed owner is
-rejected before any request goes out. About ten requests.
+pagination totals, patch caps, tree entry types, that a malformed owner is
+rejected before any request goes out, and that the built-in demo resolves locally
+while an unknown `demo/*` reference does not. About ten requests.
+
+It defaults to `octocat/Hello-World`, a public repository owned by GitHub itself.
+Point it elsewhere with `RTM_LIVE_REPO=owner/repo`.
 
 ### Screenshots
 
@@ -440,14 +524,19 @@ npm install
 npm run dev            # http://localhost:3000
 ```
 
-A token is optional; see [Optional token setup](#optional-token-setup). Without
-one you get 60 requests per hour, which is enough for a few repositories.
+The built-in demo works immediately, with no configuration. A token is optional
+and only affects live GitHub mode; see
+[Optional token setup](#optional-token-setup). Without one you get 60 requests per
+hour, which is enough for a few repositories.
 
-To run the app against fixtures instead of GitHub:
+To serve the synthetic test fixtures as if they were live repositories:
 
 ```bash
 RTM_FIXTURE_MODE=1 npm run dev
 ```
+
+That flag is for tests and local inspection. It is never set in production, and
+the built-in demo does not depend on it.
 
 ## Deployment
 
@@ -481,6 +570,7 @@ src/
   components/           the interface, one CSS module per component
   lib/
     repo-ref.ts         input parsing and validation (the security boundary)
+    builtin/            the curated demo: fixture data and its local provider
     domain/types.ts     the types the UI works against
     github/             HTTP client, adapter, service, fixtures, rate-limit store
     api/                route/response contract shared by server and client
@@ -499,8 +589,8 @@ e2e/                    Playwright
 ```
 
 The pieces worth reading first are `src/lib/tree/projector.ts` (how a tree is
-reconstructed) and `src/lib/client/history-controller.ts` (how requests are
-budgeted and cancelled).
+reconstructed), `src/lib/client/history-controller.ts` (how requests are budgeted
+and cancelled) and `src/lib/builtin/` (the demo, and how it stays off the network).
 
 ## Licence
 

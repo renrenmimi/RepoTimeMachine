@@ -234,6 +234,16 @@ export function TimeMachine() {
         Skip to the timeline
       </a>
 
+      {/* Exactly one H1 in every state: the landing screen provides its own, so
+          this one only appears once a repository or the demo is open. */}
+      {state.status === 'idle' ? null : (
+        <h1 className="visually-hidden">
+          {isBuiltin
+            ? `${BUILTIN_DEMO.title} — built-in demo timeline`
+            : `${state.ref?.slug ?? 'Repository'} — commit timeline`}
+        </h1>
+      )}
+
       <header className={styles.header}>
         <div className={styles.brand}>
           <BrandMark />
@@ -255,7 +265,7 @@ export function TimeMachine() {
             <p className={styles.builtinBadge}>
               <BuiltinGlyph />
               {BUILTIN_DEMO.badge}
-              <span className={styles.builtinCost}>· 0 GitHub requests</span>
+              <span className={styles.builtinCost}>&middot; 0 GitHub requests</span>
             </p>
           ) : state.status === 'idle' ? null : (
             <RateLimitMeter
@@ -279,12 +289,13 @@ export function TimeMachine() {
         {isBuiltin ? (
           <p className={styles.sourceNote}>
             <span className={styles.sourceStrong}>{BUILTIN_DEMO.title}</span>
-            {BUILTIN_DEMO.disclosure}
+            {/* Repeated in full in the insights panel, so it can drop on a phone. */}
+            <span className={styles.sourceDetail}>{BUILTIN_DEMO.disclosure}</span>
           </p>
         ) : (
           <p className={styles.sourceNote}>
             <span className={styles.sourceStrong}>Live repository</span>
-            Read from GitHub&rsquo;s public REST API.
+            <span className={styles.sourceDetail}>Read from GitHub&rsquo;s public REST API.</span>
           </p>
         )}
         <span className={styles.sourceSpacer} />

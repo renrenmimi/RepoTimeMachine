@@ -100,7 +100,7 @@ describe('parseRepoRef — rejected input', () => {
   );
 
   it('rejects a URL that is not a repository', () => {
-    expect(failure('https://github.com/renrenmimi').code).toBe('not-a-repo-url');
+    expect(failure('https://github.com/octocat').code).toBe('not-a-repo-url');
   });
 
   it.each(['settings', 'marketplace', 'topics', 'explore', 'sponsors'])(

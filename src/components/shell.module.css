@@ -147,6 +147,20 @@
   color: var(--text-dim);
 }
 
+.sourceDetail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* On a phone the mode name is enough; the sentence is repeated in the panel. */
+@media (max-width: 620px) {
+  .sourceDetail {
+    display: none;
+  }
+}
+
 .sourceSpacer {
   flex: 1;
 }

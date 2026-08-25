@@ -266,6 +266,15 @@
   background: var(--line-strong);
 }
 
+.stateFootnote {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-faint);
+  font-size: var(--text-2xs);
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
 .stateActions {
   display: flex;
   flex-wrap: wrap;

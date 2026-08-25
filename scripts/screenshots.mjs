@@ -80,6 +80,7 @@ const shots = [
     },
   },
   { name: '08-error-desktop', width: 1440, height: 940, path: '/?repo=rtm-fixtures%2Frate-limited' },
+  { name: '09-live-desktop', width: 1440, height: 940, path: '/?repo=rtm-fixtures%2Fsample-app' },
   { name: '10-landing-mobile', width: 390, height: 900, path: '/' },
   { name: '11-timeline-mobile', width: 390, height: 900, path: `/?repo=${encodeURIComponent(REPO)}` },
   {
@@ -94,6 +95,7 @@ const shots = [
     },
   },
   { name: '13-timeline-360', width: 360, height: 780, path: `/?repo=${encodeURIComponent(REPO)}` },
+  { name: '14-live-360', width: 360, height: 780, path: '/?repo=rtm-fixtures%2Fsample-app' },
 ];
 
 async function main() {

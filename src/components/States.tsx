@@ -48,7 +48,7 @@ export function Landing({
               Play the built-in demo
             </button>
             <p className={styles.demoCost}>
-              {BUILTIN_DEMO.commitCount} commits · no GitHub account · 0 API requests
+              {BUILTIN_DEMO.commitCount} commits &middot; no GitHub account &middot; 0 GitHub requests
             </p>
           </section>
 

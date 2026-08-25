@@ -342,22 +342,37 @@ describe('privacy of the fixture content', () => {
     meta: builtinRepoMeta(),
   });
 
-  it.each(['renren-across-tabs', 'DataData', 'DrillLab', 'PetNote'])(
-    'contains no reference to %s',
-    (name) => {
-      expect(text.toLowerCase()).not.toContain(name.toLowerCase());
-    },
-  );
+  it('names no repository owner and links nowhere', () => {
+    // A curated history has no upstream, so it must not smell like one.
+    expect(text).not.toContain('github.com');
+    expect(text).not.toContain('https://');
+    expect(text).not.toMatch(/\bgit@/);
+  });
 
-  it('contains no e-mail address and no personal GitHub path', () => {
+  it('contains no e-mail address', () => {
     expect(text).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
-    expect(text).not.toContain('github.com/');
   });
 
   it('contains no issue or pull-request references', () => {
     expect(text).not.toMatch(/\(#\d+\)/);
     expect(text.toLowerCase()).not.toContain('pull request');
     expect(text.toLowerCase()).not.toContain('merge pull');
+  });
+
+  it('uses only the generic maintainer identity', () => {
+    const authors = new Set(loadDemo().commits.map((commit) => commit.author.name));
+    expect([...authors]).toEqual(['Demo Maintainer']);
+  });
+
+  it('uses paths that read as a generic learning product', () => {
+    const paths = new Set(DEMO_COMMITS.flatMap((commit) => commit.changes.map((change) => change.path)));
+    expect(paths.size).toBeGreaterThan(50);
+    for (const path of paths) {
+      // Repository-relative, no absolute paths and no escapes.
+      expect(path.startsWith('/')).toBe(false);
+      expect(path).not.toContain('..');
+      expect(path).toMatch(/^[A-Za-z0-9._[\]/-]+$/);
+    }
   });
 });
 

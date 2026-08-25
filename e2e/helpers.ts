@@ -23,8 +23,15 @@ export const REPOS = {
   unknownDemo: 'demo/not-a-real-demo',
 } as const;
 
-/** Repository names that must never appear in the shipped interface again. */
-export const REMOVED_PERSONAL_REPOS = ['renren-across-tabs', 'DataData', 'DrillLab', 'PetNote'] as const;
+/**
+ * The only GitHub destinations the shipped interface is allowed to link to: this
+ * project, and its author's profile. Anything else would mean the interface is
+ * pointing at somebody's repository again.
+ */
+export const ALLOWED_GITHUB_LINKS = [
+  'https://github.com/renrenmimi/RepoTimeMachine',
+  'https://github.com/renrenmimi',
+] as const;
 
 export function repoUrl(slug: string, commit?: string): string {
   const params = new URLSearchParams({ repo: slug });
@@ -102,6 +109,25 @@ export function collectProblems(page: Page): string[] {
   });
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
   return problems;
+}
+
+/**
+ * Fails if the page links to any GitHub location other than this project.
+ *
+ * A live repository legitimately links to itself, so pass its slug to allow it.
+ */
+export async function expectNoForeignGitHubLinks(page: Page, allowSlug?: string): Promise<void> {
+  const hrefs = await page.evaluate(() =>
+    [...document.querySelectorAll('a[href]')].map((anchor) => (anchor as HTMLAnchorElement).href),
+  );
+  const allowed = [...ALLOWED_GITHUB_LINKS, ...(allowSlug ? [`https://github.com/${allowSlug}`] : [])];
+  for (const href of hrefs) {
+    if (!href.includes('github.com')) continue;
+    expect(
+      allowed.some((prefix) => href.startsWith(prefix)),
+      `unexpected GitHub link: ${href}`,
+    ).toBe(true);
+  }
 }
 
 /** Fails if the document scrolls sideways at the current viewport. */
