@@ -86,10 +86,13 @@ jobs:
           fi
           echo "all renrenmimi links point at RepoTimeMachine"
 
-      - name: No token name is exposed to the client bundle
+      # Assembled from halves for the same reason as above: spelled out, the
+      # pattern would appear in this file and the audit would find itself.
+      - name: The token is never given a public prefix
         run: |
-          if git grep -nI 'NEXT_PUBLIC_GITHUB_TOKEN' -- .; then
-            echo "::error::GITHUB_TOKEN must never be exposed with a NEXT_PUBLIC_ prefix"
+          P='NEXT_'; P="${P}PUBLIC_GITHUB_TOKEN"
+          if git grep -nI -e "$P" -- .; then
+            echo "::error::the token must never be exposed with a public prefix"
             exit 1
           fi
           echo "no public token variable"
