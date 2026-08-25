@@ -138,6 +138,8 @@ export class HistoryController {
   #details = new Map<string, CommitDetail>();
   #snapshots = new Map<string, RepoTree>();
   #probes = new Map<string, string>();
+  /** Trees GitHub refused; retrying them inside one session only wastes quota. */
+  #failedTrees = new Set<string>();
   #treeCache = new DedupedCache<RepoTree>(64);
   #detailCache = new DedupedCache<CommitDetail>(600);
 
@@ -232,6 +234,7 @@ export class HistoryController {
     this.#details.clear();
     this.#snapshots.clear();
     this.#probes.clear();
+    this.#failedTrees.clear();
     this.#treeCache.clear();
     this.#detailCache.clear();
     this.#priority = [];
@@ -279,6 +282,9 @@ export class HistoryController {
       }
 
       this.#patch({ status: 'ready' });
+      // Metadata milestones (initial commit, merges, breaking-change markers)
+      // need no further requests, so they are available immediately.
+      this.#scheduleDerived();
       void this.#loadSupporting(generation, ref, repo.meta.defaultBranch);
     } catch (error) {
       if (isAbort(error) || this.#isStale(generation)) return;
@@ -444,7 +450,7 @@ export class HistoryController {
     for (const index of planCheckpoints(commits.length, budget)) {
       if (this.#isStale(generation) || this.#quotaExhausted()) return;
       const sha = commits[index]?.sha;
-      if (!sha || this.#snapshots.has(sha)) continue;
+      if (!sha || this.#snapshots.has(sha) || this.#failedTrees.has(sha)) continue;
       await this.#ensureTree(generation, ref, sha);
       this.#scheduleDerived();
     }
@@ -452,6 +458,7 @@ export class HistoryController {
 
   async #ensureTree(generation: number, ref: RepoRef, sha: string): Promise<RepoTree | null> {
     if (this.#snapshots.has(sha)) return this.#snapshots.get(sha)!;
+    if (this.#failedTrees.has(sha)) return null;
     try {
       const tree = await this.#treeCache.load(`${ref.slug}:${sha}`, async () => {
         const payload = await this.#api.fetchTree(ref, sha, this.#fetchOptions());
@@ -467,6 +474,7 @@ export class HistoryController {
       return tree;
     } catch (error) {
       if (isAbort(error) || this.#isStale(generation)) return null;
+      this.#failedTrees.add(sha);
       if (error instanceof ApiError && error.info.code === 'rate-limited') {
         this.#notice(error.info.message);
       }
