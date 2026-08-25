@@ -1,0 +1,375 @@
+.panel {
+  background: var(--surface-panel);
+}
+
+/* -------------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line-faint);
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+}
+
+.tab {
+  position: relative;
+  padding: var(--space-3) var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text-bright);
+}
+
+.tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: -1px;
+  height: 2px;
+  background: var(--signal);
+}
+
+.tabCount {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------ blocks */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.block {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.blockTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.estimate {
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-3xs);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-faint);
+}
+
+.description {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+
+.facts dt {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.empty,
+.disclaimer {
+  font-size: var(--text-2xs);
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
+.disclaimer {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-faint);
+  background: var(--surface-inset);
+}
+
+.empty {
+  padding: var(--space-4);
+}
+
+/* -------------------------------------------------------------- milestones */
+
+.milestoneList {
+  display: flex;
+  flex-direction: column;
+}
+
+.milestoneItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-faint);
+  border-left: 2px solid transparent;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+
+.milestoneItem:hover {
+  background: var(--surface-hover);
+}
+
+.milestoneItem[data-active] {
+  border-left-color: var(--amber);
+  background: var(--amber-wash);
+}
+
+.milestoneTop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.milestoneLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--amber-bright);
+}
+
+.milestoneIndex {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+}
+
+.milestoneCommit {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.milestoneRules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.milestoneRuleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--amber-dim);
+}
+
+.milestoneEvidence {
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.milestoneRule {
+  font-size: var(--text-3xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.milestoneConfidence {
+  margin-top: 2px;
+  font-size: var(--text-3xs);
+  color: var(--amber-dim);
+}
+
+/* ----------------------------------------------------------------- commits */
+
+.commitsTab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.commitTools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-faint);
+  flex-shrink: 0;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  padding: 3px var(--space-2);
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: none;
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.search:focus {
+  border-color: var(--signal-dim);
+}
+
+.commitCount {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.commitList {
+  flex: 1;
+  min-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.commitItem {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line-faint);
+  border-left: 2px solid transparent;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.commitItem:hover {
+  background: var(--surface-hover);
+}
+
+.commitItem[data-active] {
+  border-left-color: var(--signal);
+  background: var(--signal-wash);
+}
+
+.commitTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.commitSubject {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commitFlag {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--amber);
+  transform: rotate(45deg);
+}
+
+.commitMeta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.commitIndex {
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+.loadMore {
+  flex-shrink: 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--line-faint);
+}
+
+.loadMoreButton {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-2xs);
+  color: var(--text-dim);
+}
+
+.loadMoreButton:hover:not(:disabled) {
+  border-color: var(--line-signal);
+  color: var(--signal);
+  background: var(--signal-wash);
+}
+
+.loadMoreButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loadMoreNote {
+  margin-top: var(--space-2);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  text-align: center;
+}
