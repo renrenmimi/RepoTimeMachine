@@ -5,6 +5,7 @@ import type { RepoRef } from '@/lib/repo-ref';
 import { toCommit, toCommitDetail, toRepoMeta, toRepoTree, toTags } from './adapter';
 import { githubFetch, pageFromLink } from './client';
 import { GitHubError } from './errors';
+import { fixtureCommitDetail, fixtureTree } from './fixture-bundle';
 import { loadFixtures, fixtureModeEnabled } from './fixtures';
 import { recordRateLimit } from './rate-limit-store';
 import type { RawCommitDetail, RawCommitListItem, RawRepo, RawTag, RawTree } from './raw-types';
@@ -110,7 +111,7 @@ async function countCommits(ref: RepoRef, branch: string): Promise<number | null
 export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<CommitDetail> {
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
-    const raw = fixtures.commitDetail[sha];
+    const raw = fixtureCommitDetail(fixtures, sha);
     if (!raw) throw new GitHubError('not-found', 'No fixture recorded for that commit.');
     return toCommitDetail(raw);
   }
@@ -125,7 +126,7 @@ export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<Comm
 export async function fetchTree(ref: RepoRef, sha: string): Promise<RepoTree> {
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
-    const raw = fixtures.tree[sha];
+    const raw = fixtureTree(fixtures, sha);
     if (!raw) throw new GitHubError('not-found', 'No tree fixture recorded for that commit.');
     return toRepoTree(raw, sha);
   }
@@ -171,7 +172,7 @@ export async function probeFirstCommitForPath(
     const fixtures = await loadFixtures(ref);
     const touching = fixtures.commits.filter((commit) => {
       const detail = fixtures.commitDetail[commit.sha];
-      return detail?.files?.some((file) => file.filename === path || file.previous_filename === path);
+      return detail?.files.some((file) => file.filename === path || file.previous_filename === path);
     });
     const oldest = touching[touching.length - 1];
     return { firstSha: oldest?.sha ?? null, incomplete: false };

@@ -3,16 +3,10 @@ import path from 'node:path';
 import { ApiError, type GitHubApi, type FetchOptions } from '@/lib/client/api';
 import type { RateLimitSnapshot } from '@/lib/domain/types';
 import { toCommit, toCommitDetail, toRepoMeta, toRepoTree, toTags } from '@/lib/github/adapter';
-import type { RawCommitDetail, RawCommitListItem, RawRepo, RawTag, RawTree } from '@/lib/github/raw-types';
+import { fixtureCommitDetail, fixtureTree, type FixtureBundle } from '@/lib/github/fixture-bundle';
 import type { RepoRef } from '@/lib/repo-ref';
 
-export type Bundle = {
-  repo: RawRepo;
-  commits: RawCommitListItem[];
-  commitDetail: Record<string, RawCommitDetail>;
-  tree: Record<string, RawTree>;
-  tags: RawTag[];
-};
+export type Bundle = FixtureBundle;
 
 const cache = new Map<string, Bundle>();
 
@@ -153,7 +147,7 @@ export class FakeApi implements GitHubApi {
   fetchCommitDetail = async (ref: RepoRef, sha: string, options: FetchOptions = {}) => {
     await this.#enter('commit', ref, sha, options);
     const bundle = this.#bundle(ref);
-    const raw = bundle.commitDetail[sha];
+    const raw = fixtureCommitDetail(bundle, sha);
     if (!raw) throw notFound();
     return { detail: toCommitDetail(raw) };
   };
@@ -161,7 +155,7 @@ export class FakeApi implements GitHubApi {
   fetchTree = async (ref: RepoRef, sha: string, options: FetchOptions = {}) => {
     await this.#enter('tree', ref, sha, options);
     const bundle = this.#bundle(ref);
-    const raw = bundle.tree[sha];
+    const raw = fixtureTree(bundle, sha);
     if (!raw) throw notFound();
     return { tree: toRepoTree(raw, sha) };
   };
@@ -175,7 +169,7 @@ export class FakeApi implements GitHubApi {
     await this.#enter('probe', ref, filePath, options);
     const bundle = this.#bundle(ref);
     const touching = bundle.commits.filter((commit) =>
-      bundle.commitDetail[commit.sha]?.files?.some((file) => file.filename === filePath),
+      bundle.commitDetail[commit.sha]?.files.some((file) => file.filename === filePath),
     );
     const oldest = touching[touching.length - 1];
     return { path: filePath, firstSha: oldest?.sha ?? null, incomplete: false };

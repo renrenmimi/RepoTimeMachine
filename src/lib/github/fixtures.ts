@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { RepoRef } from '@/lib/repo-ref';
 import { GitHubError } from './errors';
-import type { RawCommitDetail, RawCommitListItem, RawRepo, RawTag, RawTree } from './raw-types';
+import type { FixtureBundle } from './fixture-bundle';
 
 /**
  * Fixture mode replaces the GitHub API with recorded, sanitised payloads on disk.
@@ -17,14 +17,7 @@ export function fixtureModeEnabled(): boolean {
   return process.env.RTM_FIXTURE_MODE === '1';
 }
 
-export type FixtureBundle = {
-  repo: RawRepo;
-  /** Newest-first, matching GitHub's ordering. */
-  commits: RawCommitListItem[];
-  commitDetail: Record<string, RawCommitDetail>;
-  tree: Record<string, RawTree>;
-  tags: RawTag[];
-};
+export type { FixtureBundle } from './fixture-bundle';
 
 const FIXTURE_ROOT = path.join(process.cwd(), 'fixtures');
 

@@ -1,3 +1,5 @@
+import { afterEach } from 'vitest';
+
 import '@testing-library/jest-dom/vitest';
 
 // Vitest's jsdom environment has no matchMedia; the app reads it for
@@ -21,4 +23,14 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+}
+
+// `globals: false` means Testing Library cannot register its own cleanup, so the
+// DOM is reset here instead. Guarded, because the node-environment suites have
+// no document.
+if (typeof document !== 'undefined') {
+  const { cleanup } = await import('@testing-library/react');
+  afterEach(() => {
+    cleanup();
+  });
 }

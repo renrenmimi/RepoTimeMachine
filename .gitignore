@@ -42,3 +42,6 @@ yarn-error.log*
 
 # generated screenshots (kept out of git; regenerate with npm run screenshots)
 docs/screenshots/*.png
+
+# playwright html report
+/playwright-report

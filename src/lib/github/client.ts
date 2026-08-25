@@ -54,11 +54,13 @@ function buildUrl(request: GitHubRequest): string {
 }
 
 export function parseRateLimit(headers: Headers, authenticated: boolean): RateLimitSnapshot | null {
-  const limit = Number(headers.get('x-ratelimit-limit'));
-  const remaining = Number(headers.get('x-ratelimit-remaining'));
-  const reset = Number(headers.get('x-ratelimit-reset'));
-  if (!Number.isFinite(limit) || !Number.isFinite(remaining) || !Number.isFinite(reset)) return null;
-  return { limit, remaining, resetAt: reset, authenticated };
+  // All three headers or none: `Number(null)` is 0, and reporting "0 requests
+  // remaining" because a header was absent would be worse than reporting nothing.
+  const raw = ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].map((name) => headers.get(name));
+  if (raw.some((value) => value === null || value.trim() === '')) return null;
+  const [limit, remaining, reset] = raw.map(Number);
+  if (![limit, remaining, reset].every((value) => Number.isFinite(value))) return null;
+  return { limit: limit!, remaining: remaining!, resetAt: reset!, authenticated };
 }
 
 export function parseLinkHeader(value: string | null): Record<string, string> {

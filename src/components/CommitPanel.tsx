@@ -56,7 +56,9 @@ export function CommitPanel({ commit, previous, detail, detailPending, milestone
 
       <div className={shell.panelBody}>
         <div className={styles.head}>
-          <h3 className={styles.subject}>{commit.subject}</h3>
+          <h3 className={styles.subject} id="selected-commit-subject">
+            {commit.subject}
+          </h3>
 
           <p className={styles.meta}>
             <span className={styles.author}>{commit.author.name}</span>

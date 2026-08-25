@@ -17,7 +17,8 @@ import path from 'node:path';
 
 const API = 'https://api.github.com';
 const ROOT = path.join(process.cwd(), 'fixtures');
-const PATCH_CAP = 900;
+/** Recorded patches are cut hard: fixtures live in the repository. */
+const PATCH_CAP = 420;
 
 const token = process.env.GITHUB_TOKEN?.trim();
 
@@ -77,9 +78,14 @@ function sanitiseCommit(raw) {
   };
 }
 
+/**
+ * Only the parts of a commit the list response does not already carry. The
+ * fixture provider merges these back with the matching list item, which keeps
+ * the bundles roughly half the size.
+ */
 function sanitiseDetail(raw) {
   return {
-    ...sanitiseCommit(raw),
+    sha: raw.sha,
     stats: raw.stats ? { additions: raw.stats.additions, deletions: raw.stats.deletions, total: raw.stats.total } : null,
     files: (raw.files ?? []).map((file) => ({
       filename: file.filename,
@@ -216,7 +222,7 @@ function oneCommitBundle() {
     commits: [commit],
     commitDetail: {
       [sha]: {
-        ...commit,
+        sha,
         stats: { additions: 3, deletions: 0, total: 3 },
         files: [
           {
@@ -309,16 +315,16 @@ function bigHistoryBundle(total = 640) {
 
   const tree = {};
   const oldestFirst = [...commits].reverse();
-  for (const index of spread(total, 5)) {
+  for (const index of spread(total, 4)) {
     tree[oldestFirst[index].sha] = treeFor(Math.max(1, Math.round(((index + 1) / total) * paths.length)));
   }
 
   const commitDetail = {};
-  for (const index of spread(total, 40)) {
+  for (const index of spread(total, total)) {
     const commit = oldestFirst[index];
     const file = paths[index % paths.length];
     commitDetail[commit.sha] = {
-      ...commit,
+      sha: commit.sha,
       stats: { additions: 12 + (index % 40), deletions: index % 9, total: 12 + (index % 40) + (index % 9) },
       files: [
         {
@@ -328,8 +334,8 @@ function bigHistoryBundle(total = 640) {
           additions: 12 + (index % 40),
           deletions: index % 9,
           changes: 12 + (index % 40) + (index % 9),
-          patch: `@@ -1,3 +1,4 @@\n context line\n-old line ${index}\n+new line ${index}\n+another line ${index}`,
-          blob_url: `https://github.com/rtm-fixtures/big-history/blob/main/${file}`,
+          patch: `@@ -1,3 +1,4 @@\n ctx\n-old ${index}\n+new ${index}`,
+          blob_url: null,
         },
       ],
     };
@@ -378,8 +384,10 @@ async function main() {
     process.stdout.write('skipping recorded repositories (RTM_SKIP_NETWORK=1)\n');
   } else {
     const recorded = [
+      // Every commit's diff is recorded so fixture mode can serve a correct tree
+      // for any commit, derived the same way the client does it.
       ['renrenmimi', 'renren-across-tabs', { treeSlots: 5, detailSlots: 5, maxCommits: 100 }],
-      ['renrenmimi', 'DrillLab', { treeSlots: 6, detailSlots: 14, maxCommits: 100 }],
+      ['renrenmimi', 'DrillLab', { treeSlots: 5, detailSlots: 64, maxCommits: 100 }],
     ];
     for (const [owner, repo, options] of recorded) {
       const bundle = await record(owner, repo, options);
