@@ -26,6 +26,7 @@ export const MAX_COMMIT_FILES = 300;
 
 export function toRepoMeta(raw: RawRepo, isEmpty: boolean): RepoMeta {
   return {
+    dataSource: 'github',
     owner: raw.owner.login,
     repo: raw.name,
     slug: raw.full_name,

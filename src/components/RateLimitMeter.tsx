@@ -28,7 +28,11 @@ export function RateLimitMeter({ snapshot, ageMs, tokenConfigured }: Props) {
 
   if (!snapshot) {
     return (
-      <div className={styles.meter} title="No GitHub response has been observed yet in this server process.">
+      <div
+        className={styles.meter}
+        aria-label="GitHub request quota"
+        title="No GitHub response has been observed yet in this server process."
+      >
         <span className={styles.label}>quota</span>
         <span className={styles.value}>—</span>
       </div>
@@ -44,6 +48,7 @@ export function RateLimitMeter({ snapshot, ageMs, tokenConfigured }: Props) {
     <div
       className={styles.meter}
       data-level={level}
+      aria-label="GitHub request quota"
       title={[
         `${formatNumber(snapshot.remaining)} of ${formatNumber(snapshot.limit)} GitHub requests left`,
         `window resets ${resetIn}`,

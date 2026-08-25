@@ -212,12 +212,22 @@ export class HistoryController {
     return this.#state.tokenConfigured || Boolean(this.#state.rateLimit?.authenticated);
   }
 
+  /**
+   * Built-in data costs nothing, so none of the GitHub budgets apply to it.
+   * The demo loads completely for every visitor, with or without a token.
+   */
+  #isBuiltin(): boolean {
+    return this.#state.meta?.dataSource === 'builtin';
+  }
+
   #budget(table: { authenticated: number; anonymous: number }): number {
+    if (this.#isBuiltin()) return Number.POSITIVE_INFINITY;
     return this.#authenticated() ? table.authenticated : table.anonymous;
   }
 
   /** True when background prefetching should stop to leave quota for real interactions. */
   #quotaExhausted(): boolean {
+    if (this.#isBuiltin()) return false;
     const rateLimit = this.#state.rateLimit;
     if (!rateLimit) return false;
     const floor = this.#authenticated() ? RATE_LIMIT_FLOOR.authenticated : RATE_LIMIT_FLOOR.anonymous;
@@ -409,22 +419,24 @@ export class HistoryController {
     }
   }
 
-  /** Trees, tags, milestone probes and background diffs, in priority order. */
+  /**
+   * Everything after the commit list, in the order the screen needs it.
+   *
+   * The first usable screen is the selected commit: its tree and its diff. Those
+   * two go out together and nothing else is allowed to queue ahead of them.
+   * Tags, the remaining checkpoints, background diffs and milestone probes follow.
+   */
   async #loadSupporting(generation: number, ref: RepoRef, branch: string): Promise<void> {
     const commits = this.#state.commits;
     if (commits.length === 0) return;
 
-    // The newest commit first: it is what the visitor sees on arrival.
-    await this.#ensureTree(generation, ref, commits[commits.length - 1]!.sha);
+    const selected = commits[this.#state.playback.index] ?? commits[commits.length - 1]!;
+    await Promise.all([
+      this.#ensureTree(generation, ref, selected.sha),
+      this.ensureDetail(selected.sha),
+    ]);
     if (this.#isStale(generation)) return;
     this.#scheduleDerived();
-
-    // Then the oldest, which anchors playback from the start of the range.
-    if (commits.length > 1) {
-      await this.#ensureTree(generation, ref, commits[0]!.sha);
-      if (this.#isStale(generation)) return;
-      this.#scheduleDerived();
-    }
 
     void this.#loadTags(generation, ref);
     void this.#ensureCheckpointTrees(generation, ref);
@@ -444,9 +456,25 @@ export class HistoryController {
     }
   }
 
+  /**
+   * How many full trees are worth reading.
+   *
+   * A tree is only needed where diffs cannot reach. If every diff in the range is
+   * going to be loaded anyway, a baseline at the oldest commit plus the one
+   * already read at the selected commit makes every position exact, and further
+   * trees would be spent for nothing.
+   */
+  #treeBudget(count: number): number {
+    // Built-in trees are local, so reading one at every commit is free and makes
+    // every position exact rather than rebuilt.
+    if (this.#isBuiltin()) return count;
+    if (count <= this.#budget(DETAIL_BUDGET)) return 2;
+    return this.#budget(TREE_BUDGET);
+  }
+
   async #ensureCheckpointTrees(generation: number, ref: RepoRef): Promise<void> {
     const commits = this.#state.commits;
-    const budget = this.#budget(TREE_BUDGET);
+    const budget = this.#treeBudget(commits.length);
     for (const index of planCheckpoints(commits.length, budget)) {
       if (this.#isStale(generation) || this.#quotaExhausted()) return;
       const sha = commits[index]?.sha;
@@ -548,7 +576,7 @@ export class HistoryController {
     try {
       const budget = this.#budget(DETAIL_BUDGET);
       const commits = this.#state.commits;
-      const target = Math.min(commits.length, budget);
+      const target = Number.isFinite(budget) ? Math.min(commits.length, budget) : commits.length;
       const limitReason =
         target < commits.length
           ? this.#authenticated()
@@ -620,7 +648,9 @@ export class HistoryController {
    * cheaper than downloading every diff to find the same answer.
    */
   async #runProbes(generation: number, ref: RepoRef, branch: string): Promise<void> {
-    if (!this.#authenticated()) return; // too expensive on the anonymous limit
+    // Path probes cost a request each, which the anonymous limit cannot spare.
+    // Built-in data has no limit to spare.
+    if (!this.#authenticated() && !this.#isBuiltin()) return;
     const commits = this.#state.commits;
     const headSha = commits[commits.length - 1]?.sha;
     if (!headSha) return;

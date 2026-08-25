@@ -6,6 +6,7 @@ import type { Milestone } from '@/lib/milestones/detect';
 import type { ActivityMap, GrowthSeries } from '@/lib/stats/growth';
 import { estimateLanguages } from '@/lib/stats/growth';
 import type { Projection } from '@/lib/tree/projector';
+import { BUILTIN_DEMO } from '@/lib/demos';
 import { formatDate, formatNumber } from '@/lib/format';
 import { ActivityGrid, GrowthChart, LanguageBar } from './Charts';
 import { useVirtualRows } from './hooks';
@@ -96,8 +97,20 @@ function GrowthTab({ meta, commits, currentIndex, projection, growth, activity, 
     <div className={styles.stack}>
       {meta ? (
         <section className={styles.block}>
-          <h3 className={styles.blockTitle}>{meta.slug}</h3>
+          <h3 className={styles.blockTitle}>
+            {meta.dataSource === 'builtin' ? BUILTIN_DEMO.title : meta.slug}
+            {meta.dataSource === 'builtin' ? <span className={styles.estimate}>{BUILTIN_DEMO.badge}</span> : null}
+          </h3>
           {meta.description ? <p className={styles.description}>{meta.description}</p> : null}
+          {meta.dataSource === 'builtin' ? (
+            <p className={styles.disclosureInline}>{BUILTIN_DEMO.disclosure}</p>
+          ) : meta.htmlUrl ? (
+            <p className={styles.description}>
+              <a href={meta.htmlUrl} target="_blank" rel="noreferrer noopener">
+                Open on GitHub
+              </a>
+            </p>
+          ) : null}
           <dl className={styles.facts}>
             <div>
               <dt>branch</dt>

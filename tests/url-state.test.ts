@@ -10,8 +10,8 @@ const ref = (slug: string) => {
 
 describe('parseAppUrl', () => {
   it('reads a repository and commit', () => {
-    const state = parseAppUrl('?repo=renrenmimi%2FDrillLab&c=6cc6ba6');
-    expect(state.repo?.slug).toBe('renrenmimi/DrillLab');
+    const state = parseAppUrl('?repo=octocat%2Fhello-world&c=6cc6ba6');
+    expect(state.repo?.slug).toBe('octocat/hello-world');
     expect(state.commit).toBe('6cc6ba6');
   });
 
@@ -79,7 +79,7 @@ describe('buildAppUrl', () => {
 
 describe('round trip', () => {
   it('rebuilds the same state a shared URL described', () => {
-    const original = { repo: ref('renrenmimi/PetNote'), commit: 'abcdef1234' };
+    const original = { repo: ref('octocat/Spoon-Knife'), commit: 'abcdef1234' };
     const restored = parseAppUrl(buildAppUrl(original).replace('/?', '?'));
     expect(restored.repo?.slug).toBe(original.repo.slug);
     expect(restored.commit).toBe(original.commit);

@@ -14,7 +14,7 @@ test.describe('reduced motion', () => {
   });
 
   test('transition durations collapse to nothing', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
 
     const durations = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
@@ -32,8 +32,8 @@ test.describe('reduced motion', () => {
   });
 
   test('the change marker settles immediately instead of pulsing', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
-    await transport(page).slider.fill('63');
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('15');
     await page.waitForTimeout(400);
 
     const marker = page.locator('[role="treeitem"][data-status] [class*="marker"]').first();
@@ -43,13 +43,13 @@ test.describe('reduced motion', () => {
   });
 
   test('playback still works, and still steps one commit at a time', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
+    await openRepo(page, REPOS.demo);
     const t = transport(page);
 
-    await t.slider.fill('10');
+    await t.slider.fill('4');
     await t.play.click();
     await expect(t.pause).toBeVisible();
-    await expect.poll(() => currentIndex(page), { timeout: 8000 }).toBeGreaterThan(11);
+    await expect.poll(() => currentIndex(page), { timeout: 8000 }).toBeGreaterThan(5);
     await t.pause.click();
     await expect(t.play).toBeVisible();
   });

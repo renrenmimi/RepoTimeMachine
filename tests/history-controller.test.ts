@@ -3,18 +3,21 @@ import { AUTO_PAGES, HistoryController, MAX_PAGES, planCheckpoints } from '@/lib
 import { FakeApi, notFound, rateLimited, ref, settle, until } from './fake-api';
 
 const BUNDLES = {
-  'renrenmimi/renren-across-tabs': 'renren-across-tabs',
-  'renrenmimi/drilllab': 'drilllab',
+  'rtm-fixtures/tiny-app': 'tiny-app',
+  'rtm-fixtures/sample-app': 'sample-app',
   'rtm-fixtures/one-commit': 'one-commit',
   'rtm-fixtures/empty-repo': 'empty-repo',
   'rtm-fixtures/big-history': 'big-history',
 };
 
-const TINY = ref('renrenmimi/renren-across-tabs');
-const MEDIUM = ref('renrenmimi/DrillLab');
+const TINY = ref('rtm-fixtures/tiny-app');
+const MEDIUM = ref('rtm-fixtures/sample-app');
 const ONE = ref('rtm-fixtures/one-commit');
 const EMPTY = ref('rtm-fixtures/empty-repo');
 const BIG = ref('rtm-fixtures/big-history');
+
+/** The same bundles; named where a test is specifically about a live repository. */
+const BUILTIN_FREE_BUNDLES = BUNDLES;
 
 const controllers: HistoryController[] = [];
 
@@ -43,7 +46,7 @@ describe('loading a repository', () => {
 
     const state = controller.getState();
     expect(state.status).toBe('ready');
-    expect(state.meta?.slug).toBe('renrenmimi/renren-across-tabs');
+    expect(state.meta?.slug).toBe('rtm-fixtures/tiny-app');
     expect(state.commits).toHaveLength(5);
     expect(state.totalCommits).toBe(5);
     expect(state.hasOlder).toBe(false);
@@ -138,7 +141,7 @@ describe('pagination boundaries', () => {
     const api = new FakeApi({ bundles: BUNDLES });
     const controller = make(api);
     await controller.load(MEDIUM);
-    expect(controller.getState().commits).toHaveLength(64);
+    expect(controller.getState().commits).toHaveLength(12);
     expect(api.countOf('commits')).toBe(1);
     expect(controller.getState().hasOlder).toBe(false);
   });
@@ -258,9 +261,10 @@ describe('request budgeting', () => {
     const api = new FakeApi({ bundles: BUNDLES, tokenConfigured: false });
     api.setRateLimit({ limit: 60, remaining: 55, resetAt: Math.floor(Date.now() / 1000) + 600, authenticated: false });
     const controller = make(api);
-    await controller.load(MEDIUM);
+    // A range longer than the anonymous diff budget, so the limit has to be stated.
+    await controller.load(BIG);
     await settle(controller);
-    expect(controller.getState().densify.target).toBeLessThan(64);
+    expect(controller.getState().densify.target).toBeLessThan(controller.getState().commits.length);
     expect(controller.getState().densify.limitReason).toMatch(/60 requests\/hour|leave GitHub requests/);
   });
 
@@ -290,7 +294,7 @@ describe('stale requests and repository switching', () => {
     await Promise.all([first, second]);
 
     expect(controller.getState().ref?.slug).toBe(MEDIUM.slug);
-    expect(controller.getState().meta?.slug).toBe('renrenmimi/DrillLab');
+    expect(controller.getState().meta?.slug).toBe('rtm-fixtures/sample-app');
   });
 
   it('does not let a slow first repository overwrite the second one’s commits', async () => {
@@ -316,9 +320,9 @@ describe('stale requests and repository switching', () => {
     await controller.load(TINY);
     const state = controller.getState();
     expect(state.detailCount).toBeLessThanOrEqual(state.commits.length);
-    // No file from DrillLab may survive into the new projection.
+    // No file from the previous repository may survive into the new projection.
     const projected = [...controller.projector.project(state.commits.length - 1).files.keys()];
-    expect(projected.some((path) => path.startsWith('components/arena-'))).toBe(false);
+    expect(projected.some((path) => path.startsWith('src/components/module-'))).toBe(false);
   });
 
   it('resets to the idle state', async () => {
@@ -360,7 +364,7 @@ describe('selection', () => {
   it('falls back to the newest commit when the requested sha is not in range', async () => {
     const controller = make(new FakeApi({ bundles: BUNDLES }));
     await controller.load(MEDIUM, 'deadbee');
-    expect(controller.getState().playback.index).toBe(63);
+    expect(controller.getState().playback.index).toBe(11);
   });
 
   it('moves the playhead through dispatchPlayback', async () => {
@@ -390,8 +394,8 @@ describe('derived data', () => {
     await settle(controller);
 
     const growth = controller.getState().growth!;
-    expect(growth.points).toHaveLength(64);
-    expect(growth.knownCommits).toBeLessThanOrEqual(64);
+    expect(growth.points).toHaveLength(12);
+    expect(growth.knownCommits).toBeLessThanOrEqual(12);
     expect(growth.coverage).toBeGreaterThan(0);
     for (const point of growth.points) {
       if (!point.known) expect(point.additions + point.deletions).toBe(0);
@@ -462,5 +466,70 @@ describe('error tolerance', () => {
     await controller.load(TINY);
     expect(controller.getState().status).toBe('ready');
     expect(controller.getState().commits).toHaveLength(5);
+  });
+});
+
+describe('request efficiency', () => {
+  it('reads only what the first usable screen needs, in order', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(TINY);
+
+    const kinds = api.calls.map((call) => call.endpoint);
+    const selected = controller.currentCommit!;
+
+    // Metadata, then the commit list, then the selected commit's tree and diff.
+    expect(kinds[0]).toBe('repo');
+    expect(kinds[1]).toBe('commits');
+    expect(kinds.slice(2).sort()).toEqual(['commit', 'tree']);
+    expect(api.calls.filter((call) => call.arg === selected.sha)).toHaveLength(2);
+
+    // Nothing optional has gone out yet.
+    expect(api.countOf('tags')).toBe(0);
+    expect(api.countOf('probe')).toBe(0);
+
+    // And the optional work does still happen, just afterwards.
+    await settle(controller);
+    expect(api.countOf('tags')).toBe(1);
+  });
+
+  it('does not read a tree per commit for a five-commit repository', async () => {
+    const api = new FakeApi({ bundles: BUILTIN_FREE_BUNDLES });
+    const controller = make(api);
+    await controller.load(TINY);
+    await settle(controller);
+
+    expect(controller.getState().commits).toHaveLength(5);
+    // Every diff is loaded, so a baseline tree plus the selected one is enough.
+    expect(api.countOf('tree')).toBeLessThanOrEqual(2);
+    expect(api.countOf('commit')).toBeLessThanOrEqual(5);
+    // Which still leaves every position exact.
+    for (let index = 0; index < 5; index += 1) {
+      expect(controller.projector.project(index).fidelity).not.toBe('partial');
+    }
+  });
+
+  it('keeps the whole first load well under one request per commit', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    await settle(controller);
+
+    const perCommit = api.callCount / controller.getState().commits.length;
+    expect(controller.getState().commits).toHaveLength(12);
+    // Diffs are one per commit by nature; everything else must stay bounded.
+    expect(api.countOf('tree') + api.countOf('commits') + api.countOf('repo') + api.countOf('tags')).toBeLessThan(8);
+    expect(perCommit).toBeLessThan(2);
+  });
+
+  it('still reads more trees when diffs cannot cover the range', async () => {
+    const api = new FakeApi({ bundles: BUNDLES, tokenConfigured: false });
+    api.setRateLimit({ limit: 60, remaining: 58, resetAt: Math.floor(Date.now() / 1000) + 600, authenticated: false });
+    const controller = make(api);
+    await controller.load(BIG);
+    await settle(controller);
+
+    // 300 commits with a 12-diff budget: checkpoints are the only way to cover it.
+    expect(api.countOf('tree')).toBeGreaterThan(2);
   });
 });

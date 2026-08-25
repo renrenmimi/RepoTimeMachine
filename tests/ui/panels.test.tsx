@@ -449,17 +449,17 @@ describe('RepoInput', () => {
   it('submits a valid reference', async () => {
     const onSubmit = vi.fn();
     render(<RepoInput current={null} busy={false} onSubmit={onSubmit} />);
-    await userEvent.type(screen.getByRole('textbox'), 'renrenmimi/DrillLab');
+    await userEvent.type(screen.getByRole('textbox'), 'octocat/hello-world');
     await userEvent.click(screen.getByRole('button', { name: 'Load' }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ slug: 'renrenmimi/DrillLab' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ slug: 'octocat/hello-world' }));
   });
 
   it('accepts a pasted GitHub URL', async () => {
     const onSubmit = vi.fn();
     render(<RepoInput current={null} busy={false} onSubmit={onSubmit} />);
-    await userEvent.type(screen.getByRole('textbox'), 'https://github.com/renrenmimi/PetNote/tree/main');
+    await userEvent.type(screen.getByRole('textbox'), 'https://github.com/octocat/Spoon-Knife/tree/main');
     await userEvent.click(screen.getByRole('button', { name: 'Load' }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ slug: 'renrenmimi/PetNote' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ slug: 'octocat/Spoon-Knife' }));
   });
 
   it('refuses a non-GitHub host and explains why', async () => {
@@ -492,12 +492,12 @@ describe('RepoInput', () => {
   it('shows whatever repository is loaded', () => {
     render(
       <RepoInput
-        current={{ owner: 'renrenmimi', repo: 'DataData', slug: 'renrenmimi/DataData' }}
+        current={{ owner: 'octocat', repo: 'example-repo', slug: 'octocat/example-repo' }}
         busy={false}
         onSubmit={vi.fn()}
       />,
     );
-    expect(screen.getByRole('textbox')).toHaveValue('renrenmimi/DataData');
+    expect(screen.getByRole('textbox')).toHaveValue('octocat/example-repo');
   });
 
   it('reverts an edit on Escape', async () => {

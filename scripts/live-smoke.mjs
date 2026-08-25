@@ -14,7 +14,11 @@
  */
 
 const BASE = (process.env.RTM_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
-const REPO = process.env.RTM_LIVE_REPO ?? 'renrenmimi/DrillLab';
+/**
+ * A neutral, public test repository owned by GitHub itself. Override with
+ * RTM_LIVE_REPO to check a different one; nothing personal is used by default.
+ */
+const REPO = process.env.RTM_LIVE_REPO ?? 'octocat/Hello-World';
 const [OWNER, NAME] = REPO.split('/');
 
 let failures = 0;
@@ -86,11 +90,24 @@ async function main() {
   const probe = await get(`/api/gh/probe?owner=${OWNER}&repo=${NAME}&branch=${meta.defaultBranch}&path=README.md`);
   check('path probe answers', probe.status === 200 || probe.status === 404, `status ${probe.status}`);
 
-  const missing = await get('/api/gh/repo?owner=renrenmimi&repo=this-repository-does-not-exist-rtm');
+  const missing = await get('/api/gh/repo?owner=octocat&repo=this-repository-does-not-exist-rtm');
   check('a missing repository is reported as not found', missing.status === 404, `status ${missing.status}`);
 
   const bad = await get('/api/gh/repo?owner=..%2F..&repo=x');
   check('a malformed owner is rejected before any request', bad.status === 400, `status ${bad.status}`);
+
+  // The built-in demo must answer without GitHub, in every environment.
+  const demo = await get('/api/gh/repo?owner=demo&repo=learning-platform');
+  check('the built-in demo resolves locally', demo.status === 200, `status ${demo.status}`);
+  check('the built-in demo declares itself built-in', demo.body?.data?.meta?.dataSource === 'builtin');
+  check('the built-in demo has no repository URL', demo.body?.data?.meta?.htmlUrl === null);
+
+  const unknownDemo = await get('/api/gh/repo?owner=demo&repo=not-a-real-demo');
+  check(
+    'an unknown demo reference falls through to the normal not-found path',
+    unknownDemo.status === 404,
+    `status ${unknownDemo.status}`,
+  );
 
   process.stdout.write(`\n${failures === 0 ? 'all live checks passed' : `${failures} live check(s) failed`}\n`);
   process.exit(failures === 0 ? 0 : 1);

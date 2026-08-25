@@ -48,10 +48,18 @@ export function CommitPanel({ commit, previous, detail, detailPending, milestone
           Commit
         </h2>
         <span className={shell.panelHeadSpacer} />
-        <a className={styles.shaLink} href={commit.htmlUrl} target="_blank" rel="noreferrer noopener">
-          {commit.shortSha}
-          <ExternalIcon />
-        </a>
+        {/* Built-in commits have no real URL, so there is nothing to link to and
+            no "view on GitHub" affordance is shown. */}
+        {commit.htmlUrl ? (
+          <a className={styles.shaLink} href={commit.htmlUrl} target="_blank" rel="noreferrer noopener">
+            {commit.shortSha}
+            <ExternalIcon />
+          </a>
+        ) : (
+          <span className={styles.shaPlain} title="Built-in demo commit; there is no repository to open.">
+            {commit.shortSha}
+          </span>
+        )}
       </header>
 
       <div className={shell.panelBody}>

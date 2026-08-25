@@ -1,44 +1,36 @@
+import {
+  BUILTIN_DEMO_BADGE,
+  BUILTIN_DEMO_DESCRIPTION,
+  BUILTIN_DEMO_DISCLOSURE,
+  BUILTIN_DEMO_SLUG,
+  BUILTIN_DEMO_TITLE,
+} from '@/lib/builtin/learning-platform';
+import { BUILTIN_DEMO_REF } from '@/lib/builtin/provider';
 import type { RepoRef } from '@/lib/repo-ref';
 
-export type Demo = {
+/**
+ * The one demo the application ships with.
+ *
+ * It is a curated synthetic history rather than somebody's repository, so the
+ * landing page can show what the tool does without reading a real account and
+ * without spending any GitHub quota.
+ */
+export type BuiltinDemo = {
   ref: RepoRef;
-  label: string;
-  /** What this repository demonstrates about the timeline, not marketing copy. */
-  note: string;
-  /** Approximate commit count when the demo list was written. */
-  approxCommits: number;
+  slug: string;
+  title: string;
+  badge: string;
+  description: string;
+  disclosure: string;
+  commitCount: number;
 };
 
-const ref = (owner: string, repo: string): RepoRef => ({ owner, repo, slug: `${owner}/${repo}` });
-
-/**
- * Demo repositories, chosen for different history shapes: a five-commit
- * experiment, a mid-sized course project, an application built over a weekend,
- * and a long-running app with several hundred commits.
- */
-export const DEMOS: Demo[] = [
-  {
-    ref: ref('renrenmimi', 'renren-across-tabs'),
-    label: 'renren-across-tabs',
-    note: 'Five commits. The whole history fits on one screen.',
-    approxCommits: 5,
-  },
-  {
-    ref: ref('renrenmimi', 'DataData'),
-    label: 'DataData',
-    note: 'About 30 commits; a course project that grew a structure early.',
-    approxCommits: 32,
-  },
-  {
-    ref: ref('renrenmimi', 'DrillLab'),
-    label: 'DrillLab',
-    note: 'About 60 commits over a few days, with a visible framework moment.',
-    approxCommits: 64,
-  },
-  {
-    ref: ref('renrenmimi', 'PetNote'),
-    label: 'PetNote',
-    note: 'Several hundred commits across months. Shows the loaded-range limits.',
-    approxCommits: 246,
-  },
-];
+export const BUILTIN_DEMO: BuiltinDemo = {
+  ref: BUILTIN_DEMO_REF,
+  slug: BUILTIN_DEMO_SLUG,
+  title: BUILTIN_DEMO_TITLE,
+  badge: BUILTIN_DEMO_BADGE,
+  description: BUILTIN_DEMO_DESCRIPTION,
+  disclosure: BUILTIN_DEMO_DISCLOSURE,
+  commitCount: 16,
+};

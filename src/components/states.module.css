@@ -47,7 +47,7 @@
 }
 
 .sectionTitle {
-  margin-top: var(--space-6);
+  margin-top: 0;
   margin-bottom: var(--space-3);
   font-size: var(--text-2xs);
   font-weight: 600;
@@ -56,57 +56,91 @@
   color: var(--text-faint);
 }
 
-.demos {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-2);
-}
+/* ------------------------------------------------------- built-in demo card */
 
 .demoCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: 100%;
-  height: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--line-signal);
+  border-left-width: 2px;
   border-radius: var(--radius);
-  background: var(--surface-panel);
-  text-align: left;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
+  background: linear-gradient(180deg, var(--signal-wash), transparent 70%), var(--surface-panel);
+  max-width: 520px;
 }
 
-.demoCard:hover:not(:disabled) {
-  border-color: var(--line-signal);
-  background: var(--surface-raised);
+.demoBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--signal);
 }
 
-.demoCard:disabled {
+.demoTitle {
+  margin-top: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  color: var(--text-bright);
+}
+
+.demoDescription {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.demoDisclosure {
+  margin-top: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.demoAction {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--signal-dim);
+  border-radius: var(--radius);
+  background: var(--signal-wash-strong);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--signal-bright);
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.demoAction:hover:not(:disabled) {
+  border-color: var(--signal);
+  background: color-mix(in srgb, var(--signal) 22%, transparent);
+}
+
+.demoAction:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.demoName {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-bright);
-  overflow-wrap: anywhere;
-}
-
-.demoNote {
-  font-size: var(--text-2xs);
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-
-.demoCommits {
-  margin-top: auto;
-  padding-top: var(--space-2);
+.demoCost {
+  margin-top: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-3xs);
   color: var(--text-faint);
+  text-align: center;
+}
+
+/* ------------------------------------------------------- live repository ---- */
+
+.liveBlock {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-faint);
+  max-width: 520px;
 }
 
 .notes {
@@ -137,41 +171,24 @@
  * Wide screens: prose, the field and the honesty notes down the left; the demos
  * beside them, spanning both rows, so neither column is left with a hole in it.
  */
+/*
+ * Wide screens: the two ways in on the left, the honesty notes on the right, so
+ * neither column is left with a hole under it.
+ */
 @media (min-width: 1000px) {
   .landingInner {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
-    grid-template-areas:
-      'intro demos'
-      'notes demos';
-    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.6fr);
     column-gap: var(--space-7);
-  }
-
-  .landingIntro {
-    grid-area: intro;
-  }
-
-  .landingDemos {
-    grid-area: demos;
-    align-self: start;
+    align-items: start;
   }
 
   .notes {
-    grid-area: notes;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
-    margin-top: var(--space-5);
-    padding-top: var(--space-4);
-    align-self: start;
-  }
-
-  .sectionTitle {
     margin-top: 0;
-  }
-
-  .demos {
-    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0;
+    border-top: none;
   }
 }
 
@@ -247,6 +264,15 @@
   width: 4px;
   height: 1px;
   background: var(--line-strong);
+}
+
+.stateFootnote {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-faint);
+  font-size: var(--text-2xs);
+  line-height: 1.55;
+  color: var(--text-faint);
 }
 
 .stateActions {
