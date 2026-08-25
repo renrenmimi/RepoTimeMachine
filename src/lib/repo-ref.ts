@@ -165,11 +165,12 @@ export function parseRepoRef(input: string): ParseRepoRefResult {
 
   if (raw.includes('://')) return fail('unsupported-host', 'Only github.com repositories are supported.');
 
-  const segments = raw.split('/').filter(Boolean);
-  if (segments.length !== 2) {
+  // The shorthand form is strict: exactly one separator, nothing empty.
+  const segments = raw.split('/');
+  if (segments.length !== 2 || !segments[0] || !segments[1]) {
     return fail('malformed', 'Use owner/repository, for example renrenmimi/DrillLab.');
   }
-  return build(segments[0]!, segments[1]!);
+  return build(segments[0], segments[1]);
 }
 
 function decodeSegment(segment: string): string | null {
