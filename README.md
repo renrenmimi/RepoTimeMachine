@@ -164,8 +164,9 @@ Three layers, each doing a different job:
    cached for a day; listings for five minutes. A second visitor opening the same
    repository mostly costs nothing.
 2. **HTTP cache headers** (CDN). Responses carry
-   `Cache-Control: public, s-maxage=…, stale-while-revalidate=…`. Errors carry
-   `no-store`.
+   `Cache-Control: public, s-maxage=…, stale-while-revalidate=…`, repeated as
+   `CDN-Cache-Control` and `Vercel-CDN-Cache-Control` because Vercel normalises
+   the standard header on route handlers. Errors carry `no-store` on all three.
 3. **In-memory LRU with in-flight de-duplication** (browser). Scrubbing back and
    forth never refetches. Concurrent callers asking for the same commit share one
    request. Nothing is written to `localStorage` — GitHub payloads are far too

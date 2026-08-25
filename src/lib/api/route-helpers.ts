@@ -55,9 +55,14 @@ export function readProbePath(params: URLSearchParams): string {
 export function ok<T>(data: T, cacheSeconds: number): Response {
   const { snapshot, ageMs } = readRateLimit();
   const body: ApiSuccess<T> = { data, rateLimit: snapshot, rateLimitAgeMs: ageMs };
+  const directive = `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 4}`;
   return Response.json(body, {
     headers: {
-      'Cache-Control': `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 4}`,
+      'Cache-Control': directive,
+      // Vercel normalises `Cache-Control` on route handlers, so the CDN needs
+      // to be told separately. Other hosts read the standard header above.
+      'CDN-Cache-Control': directive,
+      'Vercel-CDN-Cache-Control': directive,
     },
   });
 }
@@ -78,7 +83,11 @@ export function fail(error: unknown): Response {
   };
   return Response.json(body, {
     status: githubError.status,
-    headers: { 'Cache-Control': 'no-store' },
+    headers: {
+      'Cache-Control': 'no-store',
+      'CDN-Cache-Control': 'no-store',
+      'Vercel-CDN-Cache-Control': 'no-store',
+    },
   });
 }
 
