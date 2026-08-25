@@ -63,9 +63,16 @@ jobs:
       - uses: actions/checkout@v4
 
       # The demo is synthetic; no personal repository may reappear in the tree.
+      #
+      # The names are assembled from halves on purpose: written out in full they
+      # would appear in this file, and the audit would then find itself.
       - name: No personal repository references in tracked files
         run: |
-          if git grep -nIi -e 'renren-across-tabs' -e 'DataData' -e 'DrillLab' -e 'PetNote' -- .; then
+          A='renren-'; A="${A}across-tabs"
+          B='Data';    B="${B}Data"
+          C='Drill';   C="${C}Lab"
+          D='Pet';     D="${D}Note"
+          if git grep -nIi -e "$A" -e "$B" -e "$C" -e "$D" -- .; then
             echo "::error::a removed personal repository name is back in the tree"
             exit 1
           fi
