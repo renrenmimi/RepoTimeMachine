@@ -13,6 +13,15 @@ export type GitHubErrorCode =
   | 'unknown';
 
 /**
+ * Where a failure was decided.
+ *
+ * `local` means no request left this server, so the response must not report a
+ * GitHub quota: doing so would attribute an unrelated earlier request's numbers
+ * to a call that never happened.
+ */
+export type GitHubErrorOrigin = 'github' | 'local';
+
+/**
  * A failure that is safe to show to a visitor. `message` never contains the
  * token, request headers, or anything else from the server environment.
  */
@@ -22,11 +31,17 @@ export class GitHubError extends Error {
   readonly rateLimit: RateLimitSnapshot | null;
   /** Unix seconds when the rate limit window resets, for `rate-limited` only. */
   readonly retryAt: number | null;
+  readonly origin: GitHubErrorOrigin;
 
   constructor(
     code: GitHubErrorCode,
     message: string,
-    options: { status?: number; rateLimit?: RateLimitSnapshot | null; retryAt?: number | null } = {},
+    options: {
+      status?: number;
+      rateLimit?: RateLimitSnapshot | null;
+      retryAt?: number | null;
+      origin?: GitHubErrorOrigin;
+    } = {},
   ) {
     super(message);
     this.name = 'GitHubError';
@@ -34,6 +49,13 @@ export class GitHubError extends Error {
     this.status = options.status ?? statusForCode(code);
     this.rateLimit = options.rateLimit ?? null;
     this.retryAt = options.retryAt ?? null;
+    // Errors built from a real response are the default; local decisions opt in.
+    this.origin = options.origin ?? 'github';
+  }
+
+  /** True when no request left this server to produce this failure. */
+  get isLocal(): boolean {
+    return this.origin === 'local';
   }
 
   toJSON() {

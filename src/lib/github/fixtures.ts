@@ -43,6 +43,7 @@ export async function loadFixtures(ref: RepoRef): Promise<FixtureBundle> {
       throw new GitHubError(
         'not-found',
         'That repository could not be found. This deployment is running in fixture mode and only serves recorded repositories.',
+        { origin: 'local' },
       );
     }
     // Recorded failure states, so the error UI can be exercised end to end.
@@ -53,7 +54,7 @@ export async function loadFixtures(ref: RepoRef): Promise<FixtureBundle> {
     // `directory` comes from our own index file, never from user input.
     const base = path.join(FIXTURE_ROOT, directory);
     const bundle = await readJson<FixtureBundle>(path.join(base, 'bundle.json'));
-    if (!bundle) throw new GitHubError('upstream', 'Fixture bundle is missing or unreadable.');
+    if (!bundle) throw new GitHubError('upstream', 'Fixture bundle is missing or unreadable.', { origin: 'local' });
     if (bundle.commits.length === 0) {
       // Recorded empty repository: metadata exists, history does not.
       return { ...bundle, commitDetail: {}, tree: {}, tags: [] };
@@ -81,11 +82,12 @@ function errorFixture(code: string): GitHubError {
       return new GitHubError(
         'not-found',
         'That repository could not be found. It may be private, renamed, or misspelled \u2014 Repo Time Machine only reads public repositories.',
+        { origin: 'local' },
       );
     case 'timeout':
-      return new GitHubError('timeout', 'GitHub did not respond in time. Try again in a moment.');
+      return new GitHubError('timeout', 'GitHub did not respond in time. Try again in a moment.', { origin: 'local' });
     default:
-      return new GitHubError('upstream', 'GitHub is having trouble right now. Try again shortly.');
+      return new GitHubError('upstream', 'GitHub is having trouble right now. Try again shortly.', { origin: 'local' });
   }
 }
 

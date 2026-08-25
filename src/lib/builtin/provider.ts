@@ -41,6 +41,25 @@ export function isBuiltinSlug(slug: string): boolean {
   return slug.trim().toLowerCase() === BUILTIN_DEMO_SLUG;
 }
 
+/**
+ * `demo` is an internal namespace, not a GitHub account.
+ *
+ * Exactly one reference in it resolves — the built-in demo. Anything else is a
+ * reference to a repository that cannot exist, so asking GitHub about it would
+ * spend quota to be told what we already know.
+ */
+export function isReservedDemoOwner(owner: string): boolean {
+  return owner.trim().toLowerCase() === BUILTIN_DEMO_OWNER;
+}
+
+/**
+ * True when a reference lives in the reserved namespace but is not the built-in
+ * demo, i.e. it must be refused locally.
+ */
+export function isUnknownBuiltinRef(ref: Pick<RepoRef, 'owner' | 'slug'>): boolean {
+  return isReservedDemoOwner(ref.owner) && !isBuiltinRef(ref);
+}
+
 export const BUILTIN_DEMO_REF: RepoRef = {
   owner: BUILTIN_DEMO_OWNER,
   repo: BUILTIN_DEMO_REPO,
