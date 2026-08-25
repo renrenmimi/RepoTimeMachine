@@ -154,6 +154,12 @@
   transition: opacity var(--duration-fast) var(--ease-out), height var(--duration-fast) var(--ease-out);
 }
 
+.milestoneMark[data-approximate] {
+  background: var(--amber-dim);
+  opacity: 0.6;
+  height: 5px;
+}
+
 .milestoneMark:hover {
   opacity: 1;
   height: 10px;
@@ -286,23 +292,54 @@
 
 @media (max-width: 620px) {
   .transport {
-    padding: var(--space-2) var(--space-3) var(--space-3);
-    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
   }
 
   .row {
     gap: var(--space-2);
   }
 
+  .button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .play {
+    width: 40px;
+    height: 30px;
+  }
+
   .speed {
     order: 3;
     width: 100%;
     justify-content: flex-start;
+    gap: 0;
+  }
+
+  .speedLabel {
+    display: none;
+  }
+
+  .speedButton {
+    padding: 2px var(--space-3);
   }
 
   .readout {
     justify-content: flex-end;
     flex: 1 1 0;
+  }
+
+  .milestoneRow {
+    height: 7px;
+  }
+
+  .milestoneMark {
+    height: 6px;
+  }
+
+  .track {
+    height: 22px;
   }
 
   .scale > span:first-child,

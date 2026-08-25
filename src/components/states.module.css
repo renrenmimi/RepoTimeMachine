@@ -11,42 +11,6 @@
   max-width: 1060px;
 }
 
-@media (min-width: 1000px) {
-  .landingInner {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
-    grid-template-areas:
-      'intro demos'
-      'notes notes';
-    column-gap: var(--space-7);
-    align-items: start;
-  }
-
-  .eyebrow,
-  .title,
-  .lede,
-  .landingInput {
-    grid-column: 1;
-  }
-
-  .sectionTitle,
-  .demos {
-    grid-column: 2;
-  }
-
-  .sectionTitle {
-    margin-top: 0;
-  }
-
-  .demos {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .notes {
-    grid-column: 1 / -1;
-  }
-}
-
 .eyebrow {
   font-size: var(--text-2xs);
   font-weight: 600;
@@ -111,8 +75,7 @@
   text-align: left;
   transition:
     border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+    background var(--duration-fast) var(--ease-out);
 }
 
 .demoCard:hover:not(:disabled) {
@@ -168,6 +131,48 @@
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--text-faint);
+}
+
+/*
+ * Wide screens: prose, the field and the honesty notes down the left; the demos
+ * beside them, spanning both rows, so neither column is left with a hole in it.
+ */
+@media (min-width: 1000px) {
+  .landingInner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
+    grid-template-areas:
+      'intro demos'
+      'notes demos';
+    grid-template-rows: auto 1fr;
+    column-gap: var(--space-7);
+  }
+
+  .landingIntro {
+    grid-area: intro;
+  }
+
+  .landingDemos {
+    grid-area: demos;
+    align-self: start;
+  }
+
+  .notes {
+    grid-area: notes;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    align-self: start;
+  }
+
+  .sectionTitle {
+    margin-top: 0;
+  }
+
+  .demos {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ------------------------------------------------------------------ states */

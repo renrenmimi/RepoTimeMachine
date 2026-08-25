@@ -61,6 +61,8 @@ export function Transport({
         index,
         offset: max === 0 ? 0 : index / max,
         items,
+        // A group that is only an approximate position is drawn faintly.
+        approximate: items.every((item) => item.confidence === 'window'),
       }));
   }, [milestones, max]);
 
@@ -137,10 +139,15 @@ export function Transport({
               key={mark.index}
               type="button"
               className={styles.milestoneMark}
+              data-approximate={mark.approximate || undefined}
               style={{ left: `${mark.offset * 100}%` }}
               tabIndex={-1}
               onClick={() => onSeek(mark.index)}
-              title={`${mark.items.map((item) => item.label).join(' · ')} — commit ${mark.index + 1}`}
+              title={
+                mark.approximate
+                  ? `${mark.items.map((item) => item.label).join(' · ')} — somewhere at or after commit ${mark.index + 1}`
+                  : `${mark.items.map((item) => item.label).join(' · ')} — commit ${mark.index + 1}`
+              }
             />
           ))}
         </div>

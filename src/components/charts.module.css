@@ -19,6 +19,13 @@
   stroke-linejoin: round;
 }
 
+.filesLineEstimated {
+  stroke: var(--signal-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  stroke-linejoin: round;
+}
+
 .axis {
   stroke: var(--line);
   stroke-width: 1;
@@ -59,6 +66,12 @@
 .coverage {
   margin-left: auto;
   color: var(--text-dim);
+}
+
+.swatchDashed {
+  width: 12px;
+  height: 0;
+  border-top: 2px dashed var(--signal-dim);
 }
 
 .swatchLine,

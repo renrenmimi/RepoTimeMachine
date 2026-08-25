@@ -257,7 +257,9 @@ describe('evidence quality', () => {
 
     expect(found?.confidence).toBe('window');
     expect(found?.window).toEqual({ fromIndex: 1, toIndex: 4 });
-    expect(found?.evidence).toContain('somewhere in between');
+    // Anchored at the earliest commit it could be, not where we noticed.
+    expect(found?.commitIndex).toBe(1);
+    expect(found?.evidence).toContain('appeared somewhere in #2-#5');
   });
 
   it('says nothing when the file already existed before the loaded range began', () => {

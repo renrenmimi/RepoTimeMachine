@@ -352,14 +352,18 @@ export function firstAppearance(
     const match = matchIn(snapshot);
     if (!match) continue;
     const previous = snapshots[i - 1]!;
-    const commit = commits.find((c) => c.index === snapshot.commitIndex);
+    // Anchor the milestone at the earliest commit it could belong to. The far
+    // end of the window is where we happened to notice, which would be a
+    // misleading place to draw it.
+    const fromIndex = previous.commitIndex + 1;
+    const commit = commits.find((c) => c.index === fromIndex);
     if (!commit) return null;
     return {
       sha: commit.sha,
-      commitIndex: snapshot.commitIndex,
-      evidence: `${match} exists at commit #${snapshot.commitIndex + 1} but not at #${previous.commitIndex + 1}. The exact commit is somewhere in between.`,
+      commitIndex: fromIndex,
+      evidence: `${match} exists at commit #${snapshot.commitIndex + 1} but not at #${previous.commitIndex + 1}, so it appeared somewhere in #${fromIndex + 1}-#${snapshot.commitIndex + 1}. Loading more commit diffs narrows this down.`,
       confidence: 'window',
-      window: { fromIndex: previous.commitIndex + 1, toIndex: snapshot.commitIndex },
+      window: { fromIndex, toIndex: snapshot.commitIndex },
     };
   }
 

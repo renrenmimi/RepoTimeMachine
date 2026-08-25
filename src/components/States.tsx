@@ -16,31 +16,35 @@ export function Landing({ onSelect, busy }: { onSelect: (ref: RepoRef) => void; 
   return (
     <div className={styles.landing}>
       <div className={styles.landingInner}>
-        <p className={styles.eyebrow}>Git history, played back</p>
-        <h1 className={styles.title}>
-          Watch a repository grow, <span className={styles.titleAccent}>commit by commit</span>.
-        </h1>
-        <p className={styles.lede}>
-          Paste a public GitHub repository. Repo Time Machine reconstructs the file tree at each commit, shows what
-          changed, and marks the commits where the project visibly turned a corner.
-        </p>
+        <div className={styles.landingIntro}>
+          <p className={styles.eyebrow}>Git history, played back</p>
+          <h1 className={styles.title}>
+            Watch a repository grow, <span className={styles.titleAccent}>commit by commit</span>.
+          </h1>
+          <p className={styles.lede}>
+            Paste a public GitHub repository. Repo Time Machine reconstructs the file tree at each commit, shows what
+            changed, and marks the commits where the project visibly turned a corner.
+          </p>
 
-        <div className={styles.landingInput}>
-          <RepoInput current={null} busy={busy} onSubmit={onSelect} size="large" autoFocus />
+          <div className={styles.landingInput}>
+            <RepoInput current={null} busy={busy} onSubmit={onSelect} size="large" autoFocus />
+          </div>
         </div>
 
-        <h2 className={styles.sectionTitle}>Start with one of these</h2>
-        <ul className={styles.demos}>
-          {DEMOS.map((demo) => (
-            <li key={demo.ref.slug}>
-              <button type="button" className={styles.demoCard} onClick={() => onSelect(demo.ref)} disabled={busy}>
-                <span className={styles.demoName}>{demo.label}</span>
-                <span className={styles.demoNote}>{demo.note}</span>
-                <span className={styles.demoCommits}>~{demo.approxCommits} commits</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className={styles.landingDemos}>
+          <h2 className={styles.sectionTitle}>Start with one of these</h2>
+          <ul className={styles.demos}>
+            {DEMOS.map((demo) => (
+              <li key={demo.ref.slug}>
+                <button type="button" className={styles.demoCard} onClick={() => onSelect(demo.ref)} disabled={busy}>
+                  <span className={styles.demoName}>{demo.label}</span>
+                  <span className={styles.demoNote}>{demo.note}</span>
+                  <span className={styles.demoCommits}>~{demo.approxCommits} commits</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <div className={styles.notes}>
           <section>

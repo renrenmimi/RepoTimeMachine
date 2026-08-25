@@ -283,3 +283,30 @@ describe('rate-limit parsing and storage', () => {
     expect(readRateLimit()).toEqual({ snapshot: null, ageMs: null });
   });
 });
+
+describe('growth series honesty', () => {
+  it('marks a file count as carried forward when the diffs behind it are missing', () => {
+    const range = commits(5);
+    const projector = new TreeProjector();
+    projector.setCommits(range);
+    projector.addSnapshot(range[0]!.sha, tree(range[0]!.sha, ['a.ts']));
+
+    const series = buildGrowthSeries(range, projector);
+    expect(series.points[0]?.measured).toBe(true);
+    // Nothing after the snapshot has a diff, so those counts are carried forward.
+    expect(series.points.slice(1).every((point) => point.measured === false)).toBe(true);
+  });
+
+  it('marks a file count as measured once the chain of diffs is complete', () => {
+    const range = commits(3);
+    const projector = new TreeProjector();
+    projector.setCommits(range);
+    projector.addSnapshot(range[0]!.sha, tree(range[0]!.sha, ['a.ts']));
+    projector.addDetail(range[1]!.sha, detail(range[1]!.sha, [fileChange({ path: 'b.ts', status: 'added' })]));
+    projector.addDetail(range[2]!.sha, detail(range[2]!.sha, [fileChange({ path: 'c.ts', status: 'added' })]));
+
+    const series = buildGrowthSeries(range, projector);
+    expect(series.points.every((point) => point.measured)).toBe(true);
+    expect(series.points.at(-1)?.fileCount).toBe(3);
+  });
+});

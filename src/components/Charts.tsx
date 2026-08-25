@@ -50,8 +50,31 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
     const x = (index: number) => (count === 1 ? VIEW_W / 2 : (index / (count - 1)) * VIEW_W);
     const yFiles = (value: number) => FILES_H - (maxFiles === 0 ? 0 : (value / maxFiles) * (FILES_H - 6));
 
-    const line = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(2)},${yFiles(point.fileCount).toFixed(2)}`).join(' ');
+    const line = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(2)},${yFiles(point.fileCount).toFixed(2)}`)
+      .join(' ');
     const area = `${line} L${x(count - 1).toFixed(2)},${FILES_H} L${x(0).toFixed(2)},${FILES_H} Z`;
+
+    /*
+     * The file-count line is split into measured and carried-forward runs. A
+     * stretch where the intervening diffs have not loaded is drawn dashed
+     * rather than presented as if it had been observed.
+     */
+    type Run = { measured: boolean; parts: string[] };
+    const open: Run[] = [];
+    for (let index = 0; index < points.length; index += 1) {
+      const point = points[index]!;
+      const at = `${x(index).toFixed(2)},${yFiles(point.fileCount).toFixed(2)}`;
+      const last = open.at(-1);
+      if (!last || last.measured !== point.measured) {
+        // Repeat the boundary point so the runs meet without a visual gap.
+        if (last) last.parts.push(`L${at}`);
+        open.push({ measured: point.measured, parts: [`M${at}`] });
+      } else {
+        last.parts.push(`L${at}`);
+      }
+    }
+    const runs = open.map((run) => ({ measured: run.measured, d: run.parts.join(' ') }));
 
     const barWidth = Math.max(0.9, VIEW_W / Math.max(count, 1) - 0.6);
     const churnAxis = FILES_H + GAP + CHURN_H / 2;
@@ -66,7 +89,7 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
       };
     });
 
-    return { x, yFiles, line, area, bars, barWidth, churnAxis };
+    return { x, yFiles, area, runs, bars, barWidth, churnAxis };
   }, [points, count, maxFiles, maxChurn]);
 
   if (!geometry || count === 0) {
@@ -89,7 +112,11 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`Repository growth across ${count} loaded commits. Files rise from ${formatNumber(points[0]!.fileCount)} to ${formatNumber(points[count - 1]!.fileCount)}.`}
+        aria-label={
+          `Repository growth across ${count} loaded commits. ` +
+          `Files rise from ${formatNumber(points[0]!.fileCount)} to ${formatNumber(points[count - 1]!.fileCount)}. ` +
+          `Per-commit change counts are known for ${formatNumber(series.knownCommits)} of them.`
+        }
         onPointerDown={handlePointer}
       >
         <defs>
@@ -100,7 +127,15 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
         </defs>
 
         <path d={geometry.area} fill="url(#rtm-files)" />
-        <path d={geometry.line} className={styles.filesLine} fill="none" vectorEffect="non-scaling-stroke" />
+        {geometry.runs.map((run, index) => (
+          <path
+            key={index}
+            d={run.d}
+            className={run.measured ? styles.filesLine : styles.filesLineEstimated}
+            fill="none"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
 
         <line
           x1="0"
@@ -165,6 +200,11 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
         <span>
           <span className={styles.swatchDel} aria-hidden="true" /> deletions
         </span>
+        {series.knownCommits < count ? (
+          <span>
+            <span className={styles.swatchDashed} aria-hidden="true" /> carried forward
+          </span>
+        ) : null}
         <span className={styles.coverage}>
           diffs loaded for {formatNumber(series.knownCommits)} of {formatNumber(count)} commits
           {totalCommits > count ? ` (range holds ${formatNumber(count)} of ${formatNumber(totalCommits)})` : ''}

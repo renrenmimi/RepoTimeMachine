@@ -238,7 +238,10 @@ export function TimeMachine() {
         </div>
 
         <div className={styles.headerMain}>
-          <RepoInput current={state.ref} busy={busy} onSubmit={openRepo} />
+          {/* The landing screen has its own, larger field; two would be noise. */}
+          {state.status === 'idle' ? null : (
+            <RepoInput current={state.ref} busy={busy} onSubmit={openRepo} />
+          )}
         </div>
 
         <div className={styles.headerAside}>
@@ -258,7 +261,7 @@ export function TimeMachine() {
         </div>
       </header>
 
-      <div className={styles.demoBar}>
+      <div className={styles.demoBar} hidden={state.status === 'idle'}>
         <span className={styles.demoLabel}>demos</span>
         {DEMOS.map((demo) => (
           <button
