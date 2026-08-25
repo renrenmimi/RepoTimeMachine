@@ -15,23 +15,23 @@ const failure = (input: string) => {
 
 describe('parseRepoRef — accepted forms', () => {
   it('accepts owner/repo shorthand', () => {
-    expect(ok('renrenmimi/DrillLab')).toEqual({
-      owner: 'renrenmimi',
-      repo: 'DrillLab',
-      slug: 'renrenmimi/DrillLab',
+    expect(ok('octocat/hello-world')).toEqual({
+      owner: 'octocat',
+      repo: 'hello-world',
+      slug: 'octocat/hello-world',
     });
   });
 
   it('trims surrounding whitespace', () => {
-    expect(ok('  renrenmimi/DrillLab  ').slug).toBe('renrenmimi/DrillLab');
+    expect(ok('  octocat/hello-world  ').slug).toBe('octocat/hello-world');
   });
 
   it('accepts a plain repository URL', () => {
-    expect(ok('https://github.com/renrenmimi/PetNote').slug).toBe('renrenmimi/PetNote');
+    expect(ok('https://github.com/octocat/Spoon-Knife').slug).toBe('octocat/Spoon-Knife');
   });
 
   it('accepts a URL with extra path segments', () => {
-    expect(ok('https://github.com/renrenmimi/PetNote/tree/main/src/app').slug).toBe('renrenmimi/PetNote');
+    expect(ok('https://github.com/octocat/Spoon-Knife/tree/main/src/app').slug).toBe('octocat/Spoon-Knife');
   });
 
   it('accepts a URL with a query string and fragment', () => {
@@ -47,11 +47,11 @@ describe('parseRepoRef — accepted forms', () => {
   });
 
   it('accepts an scp-style clone URL and strips the .git suffix', () => {
-    expect(ok('git@github.com:renrenmimi/DataData.git').slug).toBe('renrenmimi/DataData');
+    expect(ok('git@github.com:octocat/example-repo.git').slug).toBe('octocat/example-repo');
   });
 
   it('accepts an https clone URL and strips the .git suffix', () => {
-    expect(ok('https://github.com/renrenmimi/DataData.git').slug).toBe('renrenmimi/DataData');
+    expect(ok('https://github.com/octocat/example-repo.git').slug).toBe('octocat/example-repo');
   });
 
   it('accepts a trailing slash', () => {

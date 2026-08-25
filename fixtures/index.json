@@ -2,9 +2,9 @@
   "rtm-fixtures/one-commit": "one-commit",
   "rtm-fixtures/empty-repo": "empty-repo",
   "rtm-fixtures/big-history": "big-history",
+  "rtm-fixtures/sample-app": "sample-app",
+  "rtm-fixtures/tiny-app": "tiny-app",
   "rtm-fixtures/rate-limited": "__error:rate-limited",
   "rtm-fixtures/private-repo": "__error:private",
-  "rtm-fixtures/slow-repo": "__error:timeout",
-  "renrenmimi/renren-across-tabs": "renren-across-tabs",
-  "renrenmimi/drilllab": "drilllab"
+  "rtm-fixtures/slow-repo": "__error:timeout"
 }

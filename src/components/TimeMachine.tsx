@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { DEMOS } from '@/lib/demos';
+import { BUILTIN_DEMO } from '@/lib/demos';
 import {
   EMPTY_HISTORY_STATE,
   HistoryController,
@@ -16,7 +16,7 @@ import { CommitPanel } from './CommitPanel';
 import { InsightsPanel } from './InsightsPanel';
 import { RateLimitMeter } from './RateLimitMeter';
 import { RepoInput } from './RepoInput';
-import { EmptyRepoState, ErrorState, Landing, LoadingState } from './States';
+import { BuiltinGlyph, EmptyRepoState, ErrorState, Landing, LoadingState } from './States';
 import { Transport } from './Transport';
 import { TreePanel } from './TreePanel';
 import { usePrefersReducedMotion } from './hooks';
@@ -82,6 +82,10 @@ export function TimeMachine() {
     writeUrl(null, null, 'push');
     controller.reset();
   }, [controller, writeUrl]);
+
+  const openBuiltinDemo = useCallback(() => {
+    openRepo(BUILTIN_DEMO.ref);
+  }, [openRepo]);
 
   // Keep the share URL current. Playback steps replace the entry; deliberate
   // jumps push one, so Back returns to where the visitor jumped from.
@@ -221,6 +225,8 @@ export function TimeMachine() {
 
   const busy = state.status === 'loading';
   const showTimeline = state.status === 'ready' && state.commits.length > 0;
+  // Comes from the server, never inferred from a label.
+  const isBuiltin = state.meta?.dataSource === 'builtin';
 
   return (
     <div className={styles.shell}>
@@ -245,11 +251,19 @@ export function TimeMachine() {
         </div>
 
         <div className={styles.headerAside}>
-          <RateLimitMeter
-            snapshot={state.rateLimit}
-            ageMs={state.rateLimitAgeMs}
-            tokenConfigured={state.tokenConfigured}
-          />
+          {isBuiltin ? (
+            <p className={styles.builtinBadge}>
+              <BuiltinGlyph />
+              {BUILTIN_DEMO.badge}
+              <span className={styles.builtinCost}>· 0 GitHub requests</span>
+            </p>
+          ) : state.status === 'idle' ? null : (
+            <RateLimitMeter
+              snapshot={state.rateLimit}
+              ageMs={state.rateLimitAgeMs}
+              tokenConfigured={state.tokenConfigured}
+            />
+          )}
           <a
             className={styles.sourceLink}
             href="https://github.com/renrenmimi/RepoTimeMachine"
@@ -261,23 +275,28 @@ export function TimeMachine() {
         </div>
       </header>
 
-      <div className={styles.demoBar} hidden={state.status === 'idle'}>
-        <span className={styles.demoLabel}>demos</span>
-        {DEMOS.map((demo) => (
-          <button
-            key={demo.ref.slug}
-            type="button"
-            className={`${styles.demoChip} ${state.ref?.slug === demo.ref.slug ? styles.demoChipActive : ''}`}
-            onClick={() => openRepo(demo.ref)}
-            title={demo.note}
-          >
-            {demo.label}
-            <span className={styles.demoCount}>~{demo.approxCommits}</span>
+      <div className={styles.sourceBar} hidden={state.status === 'idle'}>
+        {isBuiltin ? (
+          <p className={styles.sourceNote}>
+            <span className={styles.sourceStrong}>{BUILTIN_DEMO.title}</span>
+            {BUILTIN_DEMO.disclosure}
+          </p>
+        ) : (
+          <p className={styles.sourceNote}>
+            <span className={styles.sourceStrong}>Live repository</span>
+            Read from GitHub&rsquo;s public REST API.
+          </p>
+        )}
+        <span className={styles.sourceSpacer} />
+        {isBuiltin ? null : (
+          <button type="button" className={styles.sourceButton} onClick={openBuiltinDemo}>
+            <BuiltinGlyph />
+            Built-in demo
           </button>
-        ))}
+        )}
         {state.ref ? (
-          <button type="button" className={styles.demoChip} onClick={clearRepo}>
-            clear
+          <button type="button" className={styles.sourceButton} onClick={clearRepo}>
+            Start over
           </button>
         ) : null}
       </div>
@@ -294,7 +313,9 @@ export function TimeMachine() {
       </div>
 
       <main className={styles.stage} id="main">
-        {state.status === 'idle' ? <Landing onSelect={openRepo} busy={busy} /> : null}
+        {state.status === 'idle' ? (
+          <Landing onOpenDemo={openBuiltinDemo} onSelect={openRepo} busy={busy} />
+        ) : null}
 
         {state.status === 'loading' ? <LoadingState slug={state.ref?.slug ?? null} /> : null}
 
@@ -304,6 +325,7 @@ export function TimeMachine() {
             slug={state.ref?.slug ?? null}
             onRetry={() => state.ref && void controller.load(state.ref)}
             onClear={clearRepo}
+            onOpenDemo={openBuiltinDemo}
           />
         ) : null}
 

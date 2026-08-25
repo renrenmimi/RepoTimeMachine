@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ApiErrorInfo } from '@/lib/client/api';
-import { DEMOS } from '@/lib/demos';
+import { BUILTIN_DEMO } from '@/lib/demos';
 import { formatRelativeSeconds } from '@/lib/format';
 import type { RepoRef } from '@/lib/repo-ref';
 import { RepoInput } from './RepoInput';
@@ -12,7 +12,15 @@ import styles from './states.module.css';
  * The idle screen. Deliberately not a marketing hero: it explains what the tool
  * does, what "loaded history" means, and gets out of the way.
  */
-export function Landing({ onSelect, busy }: { onSelect: (ref: RepoRef) => void; busy: boolean }) {
+export function Landing({
+  onOpenDemo,
+  onSelect,
+  busy,
+}: {
+  onOpenDemo: () => void;
+  onSelect: (ref: RepoRef) => void;
+  busy: boolean;
+}) {
   return (
     <div className={styles.landing}>
       <div className={styles.landingInner}>
@@ -22,36 +30,42 @@ export function Landing({ onSelect, busy }: { onSelect: (ref: RepoRef) => void; 
             Watch a repository grow, <span className={styles.titleAccent}>commit by commit</span>.
           </h1>
           <p className={styles.lede}>
-            Paste a public GitHub repository. Repo Time Machine reconstructs the file tree at each commit, shows what
-            changed, and marks the commits where the project visibly turned a corner.
+            Reconstructs the file tree at each commit, shows what changed, and marks the commits where a project
+            visibly turned a corner. Start with the built-in demo, or point it at any public GitHub repository.
           </p>
 
-          <div className={styles.landingInput}>
-            <RepoInput current={null} busy={busy} onSubmit={onSelect} size="large" autoFocus />
-          </div>
-        </div>
+          <section className={styles.demoCard} aria-labelledby="builtin-demo-title">
+            <p className={styles.demoBadge}>
+              <BuiltinGlyph />
+              {BUILTIN_DEMO.badge}
+            </p>
+            <h2 className={styles.demoTitle} id="builtin-demo-title">
+              {BUILTIN_DEMO.title}
+            </h2>
+            <p className={styles.demoDescription}>{BUILTIN_DEMO.description}</p>
+            <p className={styles.demoDisclosure}>{BUILTIN_DEMO.disclosure}</p>
+            <button type="button" className={styles.demoAction} onClick={onOpenDemo} disabled={busy}>
+              Play the built-in demo
+            </button>
+            <p className={styles.demoCost}>
+              {BUILTIN_DEMO.commitCount} commits · no GitHub account · 0 API requests
+            </p>
+          </section>
 
-        <div className={styles.landingDemos}>
-          <h2 className={styles.sectionTitle}>Start with one of these</h2>
-          <ul className={styles.demos}>
-            {DEMOS.map((demo) => (
-              <li key={demo.ref.slug}>
-                <button type="button" className={styles.demoCard} onClick={() => onSelect(demo.ref)} disabled={busy}>
-                  <span className={styles.demoName}>{demo.label}</span>
-                  <span className={styles.demoNote}>{demo.note}</span>
-                  <span className={styles.demoCommits}>~{demo.approxCommits} commits</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className={styles.liveBlock}>
+            <h2 className={styles.sectionTitle}>Or explore a live repository</h2>
+            <div className={styles.landingInput}>
+              <RepoInput current={null} busy={busy} onSubmit={onSelect} size="large" />
+            </div>
+          </div>
         </div>
 
         <div className={styles.notes}>
           <section>
             <h3>What it reads</h3>
             <p>
-              Public repositories only, through GitHub&rsquo;s official REST API. No login, no cloning, and nothing from
-              your repository is ever executed.
+              Public repositories only, through GitHub&rsquo;s official REST API. No login, no cloning, and nothing
+              from your repository is ever executed.
             </p>
           </section>
           <section>
@@ -74,14 +88,25 @@ export function Landing({ onSelect, busy }: { onSelect: (ref: RepoRef) => void; 
   );
 }
 
+/** The mark that distinguishes built-in data from a live repository. */
+export function BuiltinGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.2" y="1.2" width="9.6" height="9.6" rx="2.2" />
+      <path d="M4 6.2 5.6 7.8 8.2 4.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 type ErrorProps = {
   error: ApiErrorInfo;
   slug: string | null;
   onRetry: () => void;
   onClear: () => void;
+  onOpenDemo: () => void;
 };
 
-export function ErrorState({ error, slug, onRetry, onClear }: ErrorProps) {
+export function ErrorState({ error, slug, onRetry, onClear, onOpenDemo }: ErrorProps) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
@@ -125,10 +150,20 @@ export function ErrorState({ error, slug, onRetry, onClear }: ErrorProps) {
           <button type="button" className={styles.primaryButton} onClick={onRetry}>
             Try again
           </button>
+          <button type="button" className={styles.secondaryButton} onClick={onOpenDemo}>
+            Open the built-in demo
+          </button>
           <button type="button" className={styles.secondaryButton} onClick={onClear}>
             Choose another repository
           </button>
         </div>
+
+        {error.code === 'rate-limited' ? (
+          <p className={styles.stateFootnote}>
+            The built-in demo is curated synthetic data. It loads without a GitHub account and costs no quota, but it
+            is not the repository you asked for.
+          </p>
+        ) : null}
       </div>
     </div>
   );

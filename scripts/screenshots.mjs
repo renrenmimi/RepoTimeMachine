@@ -2,7 +2,8 @@
 /**
  * Captures the screenshots used to review layout and hierarchy.
  *
- * Point it at a running server. Fixture mode gives deterministic images:
+ * Point it at a running server. The built-in demo is deterministic on its own;
+ * fixture mode additionally makes the loaded-range shot reproducible:
  *
  *     npm run build
  *     RTM_FIXTURE_MODE=1 npx next start -p 3311 &
@@ -18,7 +19,9 @@ import { chromium } from '@playwright/test';
 const BASE = (process.env.RTM_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
 const OUT = path.join(process.cwd(), 'docs', 'screenshots');
 
-const REPO = 'renrenmimi/DrillLab';
+/** The built-in demo needs no fixture mode and no GitHub quota. */
+const REPO = 'demo/learning-platform';
+/** Only reachable with RTM_FIXTURE_MODE=1; skipped otherwise. */
 const BIG = 'rtm-fixtures/big-history';
 
 /** @type {{name: string, width: number, height: number, path: string, steps?: (page: import('@playwright/test').Page) => Promise<void>}[]} */

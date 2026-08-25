@@ -1,5 +1,14 @@
 import 'server-only';
 
+import {
+  builtinCommitDetail,
+  builtinCommitPage,
+  builtinFirstCommitForPath,
+  builtinRepoMeta,
+  builtinTags,
+  builtinTree,
+  isBuiltinRef,
+} from '@/lib/builtin/provider';
 import type { Commit, CommitDetail, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
 import type { RepoRef } from '@/lib/repo-ref';
 import { toCommit, toCommitDetail, toRepoMeta, toRepoTree, toTags } from './adapter';
@@ -31,6 +40,9 @@ async function request<T>(args: Parameters<typeof githubFetch<T>>[0]) {
 }
 
 export async function fetchRepoMeta(ref: RepoRef): Promise<RepoMeta> {
+  // The built-in demo is resolved before anything else, in every environment,
+  // so it can never reach api.github.com or be sent a token.
+  if (isBuiltinRef(ref)) return builtinRepoMeta();
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     return toRepoMeta(fixtures.repo, fixtures.commits.length === 0);
@@ -63,6 +75,8 @@ export async function fetchCommitPage(
   page: number,
 ): Promise<CommitsResult> {
   const safePage = Math.min(Math.max(1, Math.floor(page)), MAX_COMMIT_PAGES);
+
+  if (isBuiltinRef(ref)) return builtinCommitPage(safePage, COMMITS_PER_PAGE);
 
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
@@ -109,6 +123,11 @@ async function countCommits(ref: RepoRef, branch: string): Promise<number | null
 }
 
 export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<CommitDetail> {
+  if (isBuiltinRef(ref)) {
+    const detail = builtinCommitDetail(sha);
+    if (!detail) throw new GitHubError('not-found', 'That commit is not part of the built-in demo.');
+    return detail;
+  }
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const raw = fixtureCommitDetail(fixtures, sha);
@@ -124,6 +143,11 @@ export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<Comm
 }
 
 export async function fetchTree(ref: RepoRef, sha: string): Promise<RepoTree> {
+  if (isBuiltinRef(ref)) {
+    const tree = builtinTree(sha);
+    if (!tree) throw new GitHubError('not-found', 'That commit is not part of the built-in demo.');
+    return tree;
+  }
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const raw = fixtureTree(fixtures, sha);
@@ -140,6 +164,7 @@ export async function fetchTree(ref: RepoRef, sha: string): Promise<RepoTree> {
 }
 
 export async function fetchTags(ref: RepoRef): Promise<Tag[]> {
+  if (isBuiltinRef(ref)) return builtinTags();
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     return toTags(fixtures.tags);
@@ -168,6 +193,7 @@ export async function probeFirstCommitForPath(
   branch: string,
   path: string,
 ): Promise<{ firstSha: string | null; incomplete: boolean }> {
+  if (isBuiltinRef(ref)) return { firstSha: builtinFirstCommitForPath(path), incomplete: false };
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const touching = fixtures.commits.filter((commit) => {

@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Records sanitised GitHub payloads into `fixtures/` and generates the
- * synthetic bundles the test suite needs.
+ * Generates the synthetic bundles the test suite needs, and can optionally
+ * record a public repository you name explicitly.
+ *
+ * The bundles checked into `fixtures/` are entirely synthetic: no real account's
+ * repository metadata, file tree or commit messages are stored here.
  *
  * Run it deliberately, never as part of a build or a test run:
  *
- *     GITHUB_TOKEN=... node scripts/record-fixtures.mjs
+ *     node scripts/record-fixtures.mjs
+ *     node scripts/record-fixtures.mjs owner/repo           # optional, opt-in
  *
  * What is removed: e-mail addresses, avatar URLs, and everything in the REST
  * responses this application does not read. Patches are capped so the fixtures
@@ -353,6 +357,121 @@ function bigHistoryBundle(total = 640) {
   };
 }
 
+/**
+ * A small synthetic application history, used wherever a test needs a "live"
+ * repository rather than the built-in demo. Every diff and enough trees are
+ * recorded that any commit's tree can be derived exactly.
+ */
+function appBundle(name, total, { treeSlots, description }) {
+  const areas = ['src/app', 'src/components', 'src/lib', 'styles', 'tests'];
+  const kinds = ['feat', 'fix', 'refactor', 'test', 'chore'];
+  const start = Date.UTC(2025, 5, 2, 9, 30, 0);
+
+  const commits = [];
+  for (let i = 0; i < total; i += 1) {
+    const sha = hash(`${name}:commit:${i}`);
+    const date = new Date(start + i * 19 * 3600 * 1000).toISOString();
+    const area = areas[i % areas.length];
+    commits.push({
+      sha,
+      html_url: `https://github.com/rtm-fixtures/${name}/commit/${sha}`,
+      commit: {
+        message:
+          i === 0
+            ? 'chore: scaffold the project'
+            : `${kinds[i % kinds.length]}(${area.split('/').pop()}): step ${i}`,
+        author: { name: 'Fixture Author', date },
+        committer: { name: 'Fixture Author', date },
+      },
+      author: { login: 'fixture-author', avatar_url: null },
+      parents: i === 0 ? [] : [{ sha: hash(`${name}:commit:${i - 1}`) }],
+    });
+  }
+  commits.reverse();
+
+  const oldestFirst = [...commits].reverse();
+  const rootFiles = ['README.md', 'package.json', 'tsconfig.json'];
+  const paths = [...rootFiles];
+  for (let i = 0; i < total; i += 1) {
+    paths.push(`${areas[i % areas.length]}/module-${String(i).padStart(2, '0')}.ts`);
+  }
+
+  const commitDetail = {};
+  oldestFirst.forEach((commit, i) => {
+    const files =
+      i === 0
+        ? rootFiles.map((filename) => ({
+            filename,
+            previous_filename: null,
+            status: 'added',
+            additions: 20 + (i % 7),
+            deletions: 0,
+            changes: 20 + (i % 7),
+            patch: `@@ -0,0 +1,3 @@\n+line one\n+line two\n+line three`,
+            blob_url: null,
+          }))
+        : [
+            {
+              filename: paths[rootFiles.length + i - 1],
+              previous_filename: null,
+              status: 'added',
+              additions: 14 + ((i * 5) % 40),
+              deletions: 0,
+              changes: 14 + ((i * 5) % 40),
+              patch: `@@ -0,0 +1,3 @@\n+export const step${i} = ${i};\n+\n+export default step${i};`,
+              blob_url: null,
+            },
+          ];
+    commitDetail[commit.sha] = {
+      sha: commit.sha,
+      stats: {
+        additions: files.reduce((sum, f) => sum + f.additions, 0),
+        deletions: 0,
+        total: files.reduce((sum, f) => sum + f.additions, 0),
+      },
+      files,
+    };
+  });
+
+  const treeFor = (count) => ({
+    sha: hash(`${name}:tree:${count}`),
+    truncated: false,
+    tree: paths.slice(0, count).map((p, i) => ({
+      path: p,
+      mode: '100644',
+      type: 'blob',
+      sha: hash(`${name}:blob:${p}`),
+      size: 320 + ((i * 53) % 4200),
+    })),
+  });
+
+  const tree = {};
+  for (const index of spread(total, treeSlots)) {
+    const count = index === 0 ? rootFiles.length : rootFiles.length + index;
+    tree[oldestFirst[index].sha] = treeFor(count);
+  }
+
+  return {
+    repo: syntheticRepo(name, { description, size: 240 + total * 6 }),
+    commits,
+    commitDetail,
+    tree,
+    tags: total >= 8 ? [{ name: 'v1.0.0', commit: { sha: oldestFirst[total - 2].sha } }] : [],
+  };
+}
+
+const sampleAppBundle = () =>
+  appBundle('sample-app', 12, {
+    treeSlots: 3,
+    description: 'Synthetic fixture repository standing in for a live GitHub repository.',
+  });
+
+const tinyAppBundle = () =>
+  appBundle('tiny-app', 5, {
+    treeSlots: 2,
+    description: 'Synthetic five-commit fixture used to pin the request budget.',
+  });
+
 // -------------------------------------------------------------------- main ---
 
 async function writeBundle(directory, bundle) {
@@ -370,6 +489,8 @@ async function main() {
     'rtm-fixtures/one-commit': 'one-commit',
     'rtm-fixtures/empty-repo': 'empty-repo',
     'rtm-fixtures/big-history': 'big-history',
+    'rtm-fixtures/sample-app': 'sample-app',
+    'rtm-fixtures/tiny-app': 'tiny-app',
     // Directives that make the server produce a specific failure.
     'rtm-fixtures/rate-limited': '__error:rate-limited',
     'rtm-fixtures/private-repo': '__error:private',
@@ -380,21 +501,18 @@ async function main() {
   await writeBundle('empty-repo', emptyBundle());
   await writeBundle('big-history', bigHistoryBundle());
 
-  if (process.env.RTM_SKIP_NETWORK === '1') {
-    process.stdout.write('skipping recorded repositories (RTM_SKIP_NETWORK=1)\n');
-  } else {
-    const recorded = [
-      // Every commit's diff is recorded so fixture mode can serve a correct tree
-      // for any commit, derived the same way the client does it.
-      ['renrenmimi', 'renren-across-tabs', { treeSlots: 5, detailSlots: 5, maxCommits: 100 }],
-      ['renrenmimi', 'DrillLab', { treeSlots: 5, detailSlots: 64, maxCommits: 100 }],
-    ];
-    for (const [owner, repo, options] of recorded) {
-      const bundle = await record(owner, repo, options);
-      const directory = repo.toLowerCase();
-      await writeBundle(directory, bundle);
-      index[`${owner}/${repo}`.toLowerCase()] = directory;
-    }
+  await writeBundle('sample-app', sampleAppBundle());
+  await writeBundle('tiny-app', tinyAppBundle());
+
+  // Recording a live repository is opt-in and must be named on the command line.
+  // Nothing personal is recorded by default.
+  const requested = process.argv.slice(2).filter((value) => value.includes('/'));
+  for (const slug of requested) {
+    const [owner, repo] = slug.split('/');
+    const bundle = await record(owner, repo, { treeSlots: 4, detailSlots: 40, maxCommits: 100 });
+    const directory = repo.toLowerCase();
+    await writeBundle(directory, bundle);
+    index[slug.toLowerCase()] = directory;
   }
 
   await writeFile(path.join(ROOT, 'index.json'), `${JSON.stringify(index, null, 2)}\n`, 'utf8');

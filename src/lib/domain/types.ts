@@ -12,13 +12,22 @@ export type RateLimitSnapshot = {
   authenticated: boolean;
 };
 
+/**
+ * Where a repository's data came from. Set by the server, never inferred from a
+ * label, so the UI can be certain which mode it is in.
+ */
+export type DataSource = 'builtin' | 'github';
+
 export type RepoMeta = {
+  /** `builtin` for the curated demo, `github` for a real repository. */
+  dataSource: DataSource;
   owner: string;
   repo: string;
   slug: string;
   description: string | null;
   defaultBranch: string;
-  htmlUrl: string;
+  /** Null for built-in data: there is no real repository to link to. */
+  htmlUrl: string | null;
   createdAt: string;
   pushedAt: string;
   /** GitHub's own guess at the primary language; may be null for empty repos. */
@@ -52,7 +61,8 @@ export type Commit = {
   author: CommitAuthor;
   committerDate: string;
   parents: string[];
-  htmlUrl: string;
+  /** Null for built-in data: there is no real commit to link to. */
+  htmlUrl: string | null;
   /** Index within the loaded range, 0 = oldest loaded commit. */
   index: number;
 };

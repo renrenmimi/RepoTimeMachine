@@ -168,7 +168,7 @@ export function parseRepoRef(input: string): ParseRepoRefResult {
   // The shorthand form is strict: exactly one separator, nothing empty.
   const segments = raw.split('/');
   if (segments.length !== 2 || !segments[0] || !segments[1]) {
-    return fail('malformed', 'Use owner/repository, for example renrenmimi/DrillLab.');
+    return fail('malformed', 'Use the owner/repository form, for example octocat/hello-world.');
   }
   return build(segments[0], segments[1]);
 }
