@@ -230,9 +230,18 @@ test.describe('states', () => {
   });
 
   test('treats an unknown demo reference as an ordinary missing repository', async ({ page }) => {
+    const githubCalls: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).hostname.includes('github')) githubCalls.push(request.url());
+    });
+
     await page.goto(repoUrl(REPOS.unknownDemo));
-    await expect(appAlert(page)).toContainText(/could not be found/);
+    await expect(appAlert(page)).toContainText(/not a repository/);
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveCount(0);
+    // It offers the demo as a choice rather than silently becoming it.
+    await expect(page.getByRole('button', { name: 'Open the built-in demo' })).toBeVisible();
+    await expect(builtinBadge(page)).toHaveCount(0);
+    expect(githubCalls).toEqual([]);
   });
 
   test('explains an empty repository', async ({ page }) => {

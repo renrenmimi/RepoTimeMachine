@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { BUILTIN_DEMO_SLUG } from '@/lib/builtin/learning-platform';
 import {
   builtinCommitDetail,
   builtinCommitPage,
@@ -8,6 +9,7 @@ import {
   builtinTags,
   builtinTree,
   isBuiltinRef,
+  isUnknownBuiltinRef,
 } from '@/lib/builtin/provider';
 import type { Commit, CommitDetail, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
 import type { RepoRef } from '@/lib/repo-ref';
@@ -33,6 +35,26 @@ export const COMMITS_PER_PAGE = 100;
 /** Hard ceiling on how far back a visitor can page, so one visitor cannot drain the quota. */
 export const MAX_COMMIT_PAGES = 10;
 
+/**
+ * Decides whether a reference is served from the built-in fixture.
+ *
+ * Returning `true` means "answer locally". Throwing means the reference names the
+ * reserved `demo` namespace but is not the built-in demo, so it is a repository
+ * that cannot exist and no request should be made for it. Every function below
+ * asks this one question first, so neither branch can be skipped for one endpoint.
+ */
+function servedFromBuiltin(ref: RepoRef): boolean {
+  if (isBuiltinRef(ref)) return true;
+  if (isUnknownBuiltinRef(ref)) {
+    throw new GitHubError(
+      'not-found',
+      `"${ref.slug}" is not a repository. The "demo" namespace is built into this application and holds only ${BUILTIN_DEMO_SLUG}.`,
+      { origin: 'local' },
+    );
+  }
+  return false;
+}
+
 async function request<T>(args: Parameters<typeof githubFetch<T>>[0]) {
   const response = await githubFetch<T>(args);
   recordRateLimit(response.rateLimit);
@@ -42,7 +64,7 @@ async function request<T>(args: Parameters<typeof githubFetch<T>>[0]) {
 export async function fetchRepoMeta(ref: RepoRef): Promise<RepoMeta> {
   // The built-in demo is resolved before anything else, in every environment,
   // so it can never reach api.github.com or be sent a token.
-  if (isBuiltinRef(ref)) return builtinRepoMeta();
+  if (servedFromBuiltin(ref)) return builtinRepoMeta();
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     return toRepoMeta(fixtures.repo, fixtures.commits.length === 0);
@@ -76,7 +98,7 @@ export async function fetchCommitPage(
 ): Promise<CommitsResult> {
   const safePage = Math.min(Math.max(1, Math.floor(page)), MAX_COMMIT_PAGES);
 
-  if (isBuiltinRef(ref)) return builtinCommitPage(safePage, COMMITS_PER_PAGE);
+  if (servedFromBuiltin(ref)) return builtinCommitPage(safePage, COMMITS_PER_PAGE);
 
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
@@ -123,15 +145,17 @@ async function countCommits(ref: RepoRef, branch: string): Promise<number | null
 }
 
 export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<CommitDetail> {
-  if (isBuiltinRef(ref)) {
+  if (servedFromBuiltin(ref)) {
     const detail = builtinCommitDetail(sha);
-    if (!detail) throw new GitHubError('not-found', 'That commit is not part of the built-in demo.');
+    if (!detail) {
+      throw new GitHubError('not-found', 'That commit is not part of the built-in demo.', { origin: 'local' });
+    }
     return detail;
   }
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const raw = fixtureCommitDetail(fixtures, sha);
-    if (!raw) throw new GitHubError('not-found', 'No fixture recorded for that commit.');
+    if (!raw) throw new GitHubError('not-found', 'No fixture recorded for that commit.', { origin: 'local' });
     return toCommitDetail(raw);
   }
   const { data } = await request<RawCommitDetail>({
@@ -143,15 +167,19 @@ export async function fetchCommitDetail(ref: RepoRef, sha: string): Promise<Comm
 }
 
 export async function fetchTree(ref: RepoRef, sha: string): Promise<RepoTree> {
-  if (isBuiltinRef(ref)) {
+  if (servedFromBuiltin(ref)) {
     const tree = builtinTree(sha);
-    if (!tree) throw new GitHubError('not-found', 'That commit is not part of the built-in demo.');
+    if (!tree) {
+      throw new GitHubError('not-found', 'That commit is not part of the built-in demo.', { origin: 'local' });
+    }
     return tree;
   }
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const raw = fixtureTree(fixtures, sha);
-    if (!raw) throw new GitHubError('not-found', 'No tree fixture recorded for that commit.');
+    if (!raw) {
+      throw new GitHubError('not-found', 'No tree fixture recorded for that commit.', { origin: 'local' });
+    }
     return toRepoTree(raw, sha);
   }
   const { data } = await request<RawTree>({
@@ -164,7 +192,7 @@ export async function fetchTree(ref: RepoRef, sha: string): Promise<RepoTree> {
 }
 
 export async function fetchTags(ref: RepoRef): Promise<Tag[]> {
-  if (isBuiltinRef(ref)) return builtinTags();
+  if (servedFromBuiltin(ref)) return builtinTags();
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     return toTags(fixtures.tags);
@@ -193,7 +221,7 @@ export async function probeFirstCommitForPath(
   branch: string,
   path: string,
 ): Promise<{ firstSha: string | null; incomplete: boolean }> {
-  if (isBuiltinRef(ref)) return { firstSha: builtinFirstCommitForPath(path), incomplete: false };
+  if (servedFromBuiltin(ref)) return { firstSha: builtinFirstCommitForPath(path), incomplete: false };
   if (fixtureModeEnabled()) {
     const fixtures = await loadFixtures(ref);
     const touching = fixtures.commits.filter((commit) => {

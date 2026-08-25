@@ -97,18 +97,73 @@ describe('the built-in demo, in production configuration', () => {
   });
 });
 
-describe('other demo references are not special', () => {
-  it.each([
+describe('the reserved demo namespace refuses everything else locally', () => {
+  const unknown = [
     'demo/learning',
     'demo/learning-platform-extra',
+    'demo/Learning-Platform-2',
     'demo/sample-app',
     'demo/big-history',
     'demo/one-commit',
-  ])('sends %s down the ordinary GitHub path', async (slug) => {
-    await expect(fetchRepoMeta(ref(slug))).rejects.toThrow();
-    // It tried GitHub, which is the ordinary behaviour for an unknown repository.
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain('api.github.com');
+    'demo/x',
+    'demo/rate-limited',
+  ];
+
+  it.each(unknown)('refuses %s without contacting GitHub', async (slug) => {
+    await expect(fetchRepoMeta(ref(slug))).rejects.toSatisfy(
+      (error: unknown) => isGitHubError(error) && error.code === 'not-found' && error.isLocal,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown demo reference on every endpoint', async () => {
+    const target = ref('demo/not-a-real-demo');
+    const sha = 'a'.repeat(40);
+
+    await expect(fetchRepoMeta(target)).rejects.toThrow();
+    await expect(fetchCommitPage(target, 'main', 1)).rejects.toThrow();
+    await expect(fetchCommitDetail(target, sha)).rejects.toThrow();
+    await expect(fetchTree(target, sha)).rejects.toThrow();
+    await expect(fetchTags(target)).rejects.toThrow();
+    await expect(probeFirstCommitForPath(target, 'main', 'README.md')).rejects.toThrow();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('says what the namespace holds, without offering the demo as a substitute', async () => {
+    const error = await fetchRepoMeta(ref('demo/not-a-real-demo')).catch((caught: unknown) => caught);
+    expect(isGitHubError(error)).toBe(true);
+    const message = (error as Error).message;
+    expect(message).toContain('demo/not-a-real-demo');
+    expect(message).toContain(BUILTIN_DEMO_SLUG);
+    expect(message).not.toMatch(/instead|redirect|showing/i);
+  });
+
+  it('refuses them in fixture mode too, so fixtures stay unreachable through the namespace', async () => {
+    process.env.RTM_FIXTURE_MODE = '1';
+    for (const slug of ['demo/sample-app', 'demo/big-history', 'demo/one-commit', 'demo/rate-limited']) {
+      await expect(fetchRepoMeta(ref(slug)), slug).rejects.toSatisfy(
+        (error: unknown) => isGitHubError(error) && error.code === 'not-found',
+      );
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('still resolves the one reference that does exist', async () => {
+    const meta = await fetchRepoMeta(ref(BUILTIN_DEMO_SLUG));
+    expect(meta.dataSource).toBe('builtin');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves other owners alone, including ones whose name merely contains "demo"', async () => {
+    for (const slug of ['demos/learning-platform', 'my-demo/learning-platform', 'octocat/demo']) {
+      await expect(fetchRepoMeta(ref(slug)), slug).rejects.toThrow();
+    }
+    // Each one was asked of GitHub, which is the correct behaviour for a real owner.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    for (const call of fetchSpy.mock.calls as unknown[][]) {
+      expect(String(call[0])).toContain('api.github.com');
+    }
   });
 });
 

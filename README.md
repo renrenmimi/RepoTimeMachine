@@ -77,8 +77,15 @@ Enter `owner/repository`, a GitHub URL, or a clone URL. Everything documented
 below — loaded ranges, tree reconstruction, caching, rate limits, milestones —
 applies to this mode. The built-in demo is served locally and bypasses all of it.
 
-Unknown `demo/*` references are not special: they go down the ordinary GitHub path
-and produce the ordinary not-found result.
+`demo` is a reserved internal namespace, not a GitHub account. Exactly one
+reference in it resolves — the built-in demo — and every other `demo/*` reference
+is refused locally with the ordinary 404, before any GitHub request is built. It
+is never silently swapped for the demo that does exist.
+
+Because no request goes out, those responses carry `rateLimit: null` and
+`rateLimitAgeMs: null` rather than the snapshot left by some earlier live request.
+Owners that merely resemble the reserved one — `demos`, `my-demo` — are real
+accounts and go down the ordinary GitHub path.
 
 ## What "loaded history" means
 
@@ -160,6 +167,18 @@ Security Policy can restrict `connect-src` to `'self'`.
 Every response carries `meta.dataSource`, which is `builtin` or `github`. The
 interface switches on that field rather than on any visible label, so it can never
 be wrong about which mode it is in.
+
+The reserved-namespace rule is applied where a request's parameters become a
+reference (`readRepoRef` in `src/lib/api/route-helpers.ts`, which all six routes
+call) and again where the service decides between the fixture and GitHub
+(`servedFromBuiltin` in `src/lib/github/service.ts`). One predicate, enforced at
+both boundaries, so no endpoint can be given it separately and no direct API
+request escapes it.
+
+A failure decided locally reports no GitHub quota. The rate-limit store holds
+whatever the last real response said, and attributing those numbers to a call that
+never happened would imply quota was spent and date the reading to now. Genuine
+GitHub failures still report theirs.
 
 | Route | GitHub endpoint | Cache |
 | --- | --- | --- |
