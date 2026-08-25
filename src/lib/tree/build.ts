@@ -292,27 +292,25 @@ export function flattenTree(root: MutableNode, options: FlattenOptions): Flatten
 }
 
 /**
- * Chooses a sensible initial expansion: the root level plus any directory whose
- * subtree is small enough to be worth showing, stopping around `budget` rows.
+ * Chooses the initial expansion: top-level directories only.
+ *
+ * That shows the shape of the project without guessing, and — unlike a
+ * size-based rule — it does not open and close folders on its own as the
+ * timeline moves. Anything deeper is opened by the visitor, or revealed
+ * automatically because the current commit changed something inside it.
  */
-export function defaultExpansion(root: MutableNode, budget = 40): Set<string> {
+export function defaultExpansion(root: MutableNode, budget = 400): Set<string> {
   const expanded = new Set<string>();
-  let rows = 0;
-  const queue: MutableNode[] = [root];
-  while (queue.length > 0) {
-    const node = queue.shift()!;
-    const children = sortChildren(node);
-    rows += children.length;
-    if (rows > budget && node !== root) continue;
-    for (const child of children) {
-      if (child.type !== 'dir') continue;
-      // Expand directories that are shallow enough to stay readable.
-      if (child.fileCount <= 12 || child.children.size <= 4) {
-        expanded.add(child.path);
-        queue.push(child);
-      }
-    }
+  let rows = root.children.size;
+
+  for (const child of sortChildren(root)) {
+    if (child.type !== 'dir') continue;
+    const cost = child.children.size;
+    if (rows + cost > budget) break;
+    expanded.add(child.path);
+    rows += cost;
   }
+
   return expanded;
 }
 

@@ -2,6 +2,12 @@ import { DedupedCache } from '@/lib/cache/lru';
 import type { Commit, CommitDetail, RateLimitSnapshot, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
 import { detectMilestones, type Milestone } from '@/lib/milestones/detect';
 import { SIGNATURES } from '@/lib/milestones/signatures';
+import {
+  initialPlaybackState,
+  playbackReducer,
+  type PlaybackAction,
+  type PlaybackState,
+} from '@/lib/playback/machine';
 import type { RepoRef } from '@/lib/repo-ref';
 import {
   buildActivityMap,
@@ -47,6 +53,12 @@ export type HistoryState = {
   milestones: Milestone[];
   growth: GrowthSeries | null;
   activity: ActivityMap | null;
+  /**
+   * Playback lives here rather than in the component so that loading older
+   * commits, which shifts every index, can move the playhead in the same update
+   * that changes the range. There is no window where the two disagree.
+   */
+  playback: PlaybackState;
   /** Non-fatal problems worth telling the visitor about. */
   notices: string[];
 };
@@ -94,9 +106,13 @@ function initialState(): HistoryState {
     milestones: [],
     growth: null,
     activity: null,
+    playback: initialPlaybackState(),
     notices: [],
   };
 }
+
+/** Stable object for `useSyncExternalStore`'s server snapshot. */
+export const EMPTY_HISTORY_STATE: HistoryState = Object.freeze(initialState());
 
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -124,6 +140,11 @@ export class HistoryController {
   #probes = new Map<string, string>();
   #treeCache = new DedupedCache<RepoTree>(64);
   #detailCache = new DedupedCache<CommitDetail>(600);
+
+  /** Sha the visitor asked for through the URL, before commits have arrived. */
+  #requestedSha: string | null = null;
+  /** Sha currently selected, so the selection survives a change of range. */
+  #selectedSha: string | null = null;
 
   /** Commit shas queued for background diff loading, highest priority first. */
   #priority: string[] = [];
@@ -214,6 +235,8 @@ export class HistoryController {
     this.#treeCache.clear();
     this.#detailCache.clear();
     this.#priority = [];
+    this.#selectedSha = null;
+    this.#requestedSha = null;
     this.#densifying = false;
     this.#recomputeHandle?.();
     this.#recomputeHandle = null;
@@ -221,10 +244,18 @@ export class HistoryController {
     for (const listener of this.#listeners) listener();
   }
 
-  async load(ref: RepoRef): Promise<void> {
-    if (this.#state.ref?.slug === ref.slug && this.#state.status === 'ready') return;
+  /**
+   * Loads a repository. `requestedSha` comes from a shared URL and selects that
+   * commit once the range containing it has arrived.
+   */
+  async load(ref: RepoRef, requestedSha: string | null = null): Promise<void> {
+    if (this.#state.ref?.slug === ref.slug && this.#state.status === 'ready') {
+      if (requestedSha) this.selectSha(requestedSha);
+      return;
+    }
 
     this.reset();
+    this.#requestedSha = requestedSha;
     const generation = this.#generation;
     this.#abort = new AbortController();
     this.#patch({ ref, status: 'loading' });
@@ -286,12 +317,61 @@ export class HistoryController {
     this.#projector.setCommits(commits);
     for (const [sha, tree] of this.#snapshots) this.#projector.addSnapshot(sha, tree);
     for (const [sha, detail] of this.#details) this.#projector.addDetail(sha, detail);
+    const index = this.#chooseIndex(commits);
+    this.#selectedSha = commits[index]?.sha ?? null;
+
     this.#patch({
       commits,
       hasOlder: meta.hasOlder,
       totalCommits: meta.totalCommits ?? this.#state.totalCommits,
       pagesLoaded: meta.pagesLoaded,
+      playback: playbackReducer(this.#state.playback, { type: 'setCount', count: commits.length, index }),
     });
+  }
+
+  /**
+   * Where the playhead should sit for a newly loaded range: the commit asked for
+   * in the URL, else whatever was already selected, else the newest commit --
+   * the repository as it stands today, which is the most familiar starting point.
+   */
+  #chooseIndex(commits: readonly Commit[]): number {
+    if (commits.length === 0) return 0;
+    if (this.#requestedSha) {
+      const match = commits.find((commit) => commit.sha.startsWith(this.#requestedSha!));
+      if (match) {
+        this.#requestedSha = null;
+        return match.index;
+      }
+    }
+    if (this.#selectedSha) {
+      const match = commits.find((commit) => commit.sha === this.#selectedSha);
+      if (match) return match.index;
+    }
+    return commits.length - 1;
+  }
+
+  /** Applies a playback action and keeps the remembered selection in step. */
+  dispatchPlayback = (action: PlaybackAction): void => {
+    const playback = playbackReducer(this.#state.playback, action);
+    if (playback === this.#state.playback) return;
+    this.#selectedSha = this.#state.commits[playback.index]?.sha ?? this.#selectedSha;
+    this.#patch({ playback });
+  };
+
+  /** Selects a commit by full or abbreviated sha, if it is in the loaded range. */
+  selectSha(sha: string): boolean {
+    const match = this.#state.commits.find((commit) => commit.sha.startsWith(sha));
+    if (!match) {
+      this.#requestedSha = sha;
+      return false;
+    }
+    this.dispatchPlayback({ type: 'seek', index: match.index });
+    return true;
+  }
+
+  /** The commit under the playhead, or null when nothing is loaded. */
+  get currentCommit(): Commit | null {
+    return this.#state.commits[this.#state.playback.index] ?? null;
   }
 
   /** Loads another page of older commits at the visitor's request. */
@@ -455,7 +535,7 @@ export class HistoryController {
    * so the number is budgeted against the rate limit and the work stops as soon
    * as the visitor switches repository.
    */
-  async #densify(generation: number, ref: RepoRef): Promise<void> {
+  async #densify(generation: number, _ref: RepoRef): Promise<void> {
     this.#densifying = true;
     try {
       const budget = this.#budget(DETAIL_BUDGET);

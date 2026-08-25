@@ -1,0 +1,411 @@
+.panel {
+  background: var(--surface-panel);
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-faint);
+  flex-shrink: 0;
+}
+
+.filter {
+  flex: 1;
+  min-width: 0;
+  padding: 3px var(--space-2);
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.filter:focus {
+  border-color: var(--signal-dim);
+}
+
+.filter::placeholder {
+  color: var(--text-faint);
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------- rows */
+
+.list {
+  position: relative;
+  padding: var(--space-1) 0;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: var(--space-2);
+}
+
+.rowButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text-dim);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.row[data-dir] .rowButton {
+  color: var(--text);
+}
+
+.rowButton:hover {
+  background: var(--surface-hover);
+  color: var(--text-bright);
+}
+
+.row[data-selected] .rowButton {
+  background: var(--surface-active);
+  color: var(--text-bright);
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+
+.chevron {
+  display: grid;
+  place-items: center;
+  width: 10px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.chevron svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+/* ------------------------------------------------------------------ marker */
+
+.marker {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 1px;
+  background: var(--line-strong);
+  transform: rotate(45deg);
+}
+
+.marker[data-status='added'] {
+  background: var(--signal);
+  animation: pulse-add var(--duration-pulse) var(--ease-out) 1;
+}
+
+.marker[data-status='modified'] {
+  background: var(--amber-dim);
+  animation: pulse-mod var(--duration-pulse) var(--ease-out) 1;
+}
+
+.marker[data-status='renamed'] {
+  background: var(--accent-rename);
+  animation: pulse-mod var(--duration-pulse) var(--ease-out) 1;
+}
+
+.marker[data-status='removed'] {
+  background: var(--minus);
+  animation: pulse-remove var(--duration-pulse) var(--ease-out) 1;
+}
+
+@keyframes pulse-add {
+  0% {
+    box-shadow: 0 0 0 0 var(--signal-wash-strong);
+    transform: rotate(45deg) scale(1.9);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+@keyframes pulse-mod {
+  0% {
+    transform: rotate(45deg) scale(1.5);
+  }
+  100% {
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+@keyframes pulse-remove {
+  0% {
+    transform: rotate(45deg) scale(1.6);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(45deg) scale(1);
+    opacity: 0.8;
+  }
+}
+
+/* ---------------------------------------------------------------- row text */
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+
+.row[data-dir] .name {
+  font-weight: 500;
+}
+
+.row[data-status='added'] .name {
+  color: var(--signal-bright);
+}
+
+.row[data-status='modified'] .name {
+  color: var(--amber-bright);
+}
+
+.row[data-status='renamed'] .name {
+  color: var(--accent-rename);
+}
+
+.row[data-status='removed'] .name {
+  color: var(--minus);
+  text-decoration: line-through;
+  text-decoration-color: var(--minus-dim);
+}
+
+.badge {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-faint);
+  font-size: var(--text-3xs);
+  line-height: 1.4;
+  color: var(--text-faint);
+  letter-spacing: 0.03em;
+}
+
+.meta {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------- empty/note */
+
+.empty,
+.note {
+  padding: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: var(--space-3);
+}
+
+.skeleton li {
+  height: 10px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-raised), var(--surface-hover), var(--surface-raised));
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton li {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------- inspector */
+
+.inspector {
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+  padding: var(--space-3);
+}
+
+.inspectorHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.inspectorPath {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.inspectorDir {
+  color: var(--text-faint);
+}
+
+.inspectorName {
+  color: var(--text-bright);
+}
+
+.inspectorClose {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.inspectorClose:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.inspectorFacts {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.inspectorFacts dt {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.inspectorFacts dd {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.inspectorChange {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-panel);
+  text-align: left;
+}
+
+.inspectorChange:hover {
+  border-color: var(--line-signal);
+}
+
+.inspectorChangeLabel {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.inspectorChangeSubject {
+  font-size: var(--text-2xs);
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspectorChangeMeta {
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+}
+
+.inspectorNote {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.plus {
+  color: var(--signal);
+}
+
+.minus {
+  color: var(--minus);
+}
+
+/* ---------------------------------------------------------------- fidelity */
+
+.fidelity {
+  flex-shrink: 0;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.fidelity[data-level='exact'] {
+  border-color: var(--signal-dim);
+  color: var(--signal);
+}
+
+.fidelity[data-level='derived'] {
+  border-color: var(--line-signal);
+  color: var(--signal-dim);
+}
+
+.fidelity[data-level='partial'] {
+  border-color: var(--amber-dim);
+  color: var(--amber);
+  cursor: pointer;
+}
+
+.fidelity[data-level='partial']:hover {
+  border-color: var(--amber);
+  color: var(--amber-bright);
+}

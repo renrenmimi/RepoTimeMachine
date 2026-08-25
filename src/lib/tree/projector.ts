@@ -1,9 +1,9 @@
-import type { Commit, CommitDetail, RepoTree } from '@/lib/domain/types';
+import type { Commit, CommitDetail, FileChange, RepoTree } from '@/lib/domain/types';
 import { Lru } from '@/lib/cache/lru';
 import { applyFileChanges, fileSetFromTree, type ChangeMap, type FileSet, type PathChange } from './build';
 
 /** Labels for what one commit did, without touching the projected file set. */
-function describeChanges(detail: { files: readonly import('@/lib/domain/types').FileChange[] }): {
+function describeChanges(detail: { files: readonly FileChange[] }): {
   changes: ChangeMap;
   ghosts: string[];
 } {

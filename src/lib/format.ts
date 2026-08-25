@@ -1,9 +1,12 @@
 /** Presentation helpers. All of them assume untrusted input and never build HTML. */
 
+// Commit timestamps are shown in UTC everywhere, so the timeline reads the same
+// wherever the visitor is.
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: 'short',
   year: 'numeric',
+  timeZone: 'UTC',
 });
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {

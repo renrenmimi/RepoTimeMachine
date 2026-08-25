@@ -1,0 +1,316 @@
+.transport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  background: var(--surface-panel);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text-bright);
+  background: var(--surface-hover);
+}
+
+.button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.play {
+  width: 44px;
+  height: 34px;
+  border-color: var(--signal-dim);
+  color: var(--signal);
+  background: var(--signal-wash);
+}
+
+.play:hover:not(:disabled) {
+  border-color: var(--signal);
+  color: var(--signal-bright);
+  background: var(--signal-wash-strong);
+}
+
+/* ----------------------------------------------------------------- readout */
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.position {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-bright);
+  white-space: nowrap;
+}
+
+.readoutDate {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------- speed */
+
+.speed {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.speedLabel {
+  margin-right: var(--space-1);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.speedButton {
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+
+.speedButton:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.speedButton[data-active] {
+  border-color: var(--signal-dim);
+  color: var(--signal);
+  background: var(--signal-wash);
+}
+
+.speedButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------- track */
+
+.trackArea {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.milestoneRow {
+  position: relative;
+  height: 10px;
+}
+
+.milestoneMark {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--amber);
+  opacity: 0.75;
+  transition: opacity var(--duration-fast) var(--ease-out), height var(--duration-fast) var(--ease-out);
+}
+
+.milestoneMark:hover {
+  opacity: 1;
+  height: 10px;
+}
+
+.track {
+  position: relative;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  border: 1px solid var(--line-faint);
+  overflow: hidden;
+}
+
+.ticks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  shape-rendering: crispEdges;
+}
+
+.baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.tick {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.progress {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, rgba(123, 203, 141, 0.05), rgba(123, 203, 141, 0.16));
+  border-right: 1px solid var(--signal-dim);
+  transition: width var(--duration-instant) linear;
+  pointer-events: none;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transition: left var(--duration-instant) linear;
+  pointer-events: none;
+}
+
+.playheadStem {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--amber);
+}
+
+.playheadKnob {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--amber-bright);
+  border-radius: 1px;
+}
+
+/*
+ * A real range input sits transparently over the drawn track: it brings
+ * keyboard support, touch dragging and assistive-technology semantics for free.
+ */
+.range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+}
+
+.range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border: none;
+}
+
+.range:disabled {
+  cursor: not-allowed;
+}
+
+.track:focus-within {
+  border-color: var(--signal);
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------- scale */
+
+.scale {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.rangeLabel {
+  flex: 1;
+  text-align: center;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .transport {
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .row {
+    gap: var(--space-2);
+  }
+
+  .speed {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .readout {
+    justify-content: flex-end;
+    flex: 1 1 0;
+  }
+
+  .scale > span:first-child,
+  .scale > span:last-child {
+    display: none;
+  }
+
+  .rangeLabel {
+    text-align: left;
+  }
+}

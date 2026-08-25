@@ -86,7 +86,9 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
     case 'setCount': {
       const count = Math.max(0, Math.floor(action.count));
       const index = clamp(action.index ?? state.index, count);
-      return { ...state, count, index, playing: state.playing && count > 1 && index < count - 1 };
+      const playing = state.playing && count > 1 && index < count - 1;
+      if (count === state.count && index === state.index && playing === state.playing) return state;
+      return { ...state, count, index, playing };
     }
     case 'tick': {
       if (!state.playing) return state;
