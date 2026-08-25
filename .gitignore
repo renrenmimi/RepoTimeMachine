@@ -45,3 +45,7 @@ docs/screenshots/*.png
 
 # playwright html report
 /playwright-report
+
+# vercel cli appends `.env*`; keep the checked-in template readable
+.env*
+!.env.example
