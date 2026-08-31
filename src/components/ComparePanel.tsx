@@ -5,6 +5,7 @@ import type { ApiErrorInfo } from '@/lib/client/api';
 import type { CompareState } from '@/lib/client/history-controller';
 import type { Commit, CompareEndpoint, RepoCompare, Tag } from '@/lib/domain/types';
 import { formatBytes, formatDate, formatDateTime, formatNumber } from '@/lib/format';
+import { describeComparison } from '@/lib/compare/describe';
 import { areaOf, estimateLanguages } from '@/lib/stats/growth';
 import { classifyPath } from '@/lib/tree/classify';
 import { CATEGORY_COLOURS } from './Charts';
@@ -249,12 +250,8 @@ function CompareSummary({ data }: { data: RepoCompare }) {
         </div>
       </dl>
 
-      <p className="visually-hidden">
-        {data.base.shortSha} is {STATUS_WORDS[data.status]} of {data.head.shortSha}:{' '}
-        {formatNumber(data.aheadBy)} commits ahead, {formatNumber(data.behindBy)} behind,{' '}
-        {formatNumber(data.changedFiles)} files changed, {formatNumber(data.additions)} lines added and{' '}
-        {formatNumber(data.deletions)} removed.
-      </p>
+      {/* The visual layout carries the direction in an arrow; this carries it in words. */}
+      <p className="visually-hidden">{describeComparison(data)}</p>
 
       {data.htmlUrl ? (
         <a className={styles.externalLink} href={data.htmlUrl} target="_blank" rel="noreferrer noopener">

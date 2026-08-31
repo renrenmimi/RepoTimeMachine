@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { compareLocalHistory, resolveLocalSha, type LocalCompareSource } from '@/lib/compare/local';
-import type { CommitDetail } from '@/lib/domain/types';
+import {
+  describeCompareChanges,
+  describeCompareRelation,
+  describeComparison,
+} from '@/lib/compare/describe';
+import type { CommitDetail, RepoCompare } from '@/lib/domain/types';
 import {
   MAX_COMMIT_FILES,
   normaliseCompareStatus,
@@ -372,5 +377,124 @@ describe('toRepoCompare', () => {
     expect(result.files).toEqual([]);
     expect(result.commits).toEqual([]);
     expect(result.commitsTruncated).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------- description ----
+
+describe('the spoken description of a comparison', () => {
+  /**
+   * Built from the real comparison of a known history, so the sentence is checked
+   * against the same object the interface renders — including which end is which.
+   */
+  const source = history();
+  const older = source.commits[1]!;
+  const newer = source.commits[4]!;
+
+  it('puts head first and base last, in that order', () => {
+    const compare = compareLocalHistory(source, older.sha, newer.sha)!;
+    const sentence = describeCompareRelation(compare);
+
+    // Head is the subject of the sentence; base is what it is measured against.
+    expect(sentence.indexOf(newer.shortSha)).toBeLessThan(sentence.indexOf(older.shortSha));
+    expect(sentence.startsWith(newer.shortSha)).toBe(true);
+    expect(sentence.endsWith(`${older.shortSha}.`)).toBe(true);
+  });
+
+  it('describes an ahead comparison from head’s point of view', () => {
+    const compare = compareLocalHistory(source, older.sha, newer.sha)!;
+    expect(compare.status).toBe('ahead');
+    expect(compare.aheadBy).toBe(3);
+
+    expect(describeCompareRelation(compare)).toBe(
+      `${newer.shortSha} is 3 commits ahead of ${older.shortSha}.`,
+    );
+  });
+
+  it('describes a behind comparison after the ends are swapped', () => {
+    // Exactly what the swap button produces: the same pair, the other way round.
+    const compare = compareLocalHistory(source, newer.sha, older.sha)!;
+    expect(compare.status).toBe('behind');
+    expect(compare.behindBy).toBe(3);
+
+    expect(describeCompareRelation(compare)).toBe(
+      `${older.shortSha} is 3 commits behind ${newer.shortSha}.`,
+    );
+    // "behind of" was the old, ungrammatical shape.
+    expect(describeCompareRelation(compare)).not.toContain('behind of');
+  });
+
+  it('describes an identical comparison without pretending anything moved', () => {
+    const compare = compareLocalHistory(source, newer.sha, newer.sha)!;
+    expect(compare.status).toBe('identical');
+
+    expect(describeCompareRelation(compare)).toBe(
+      `${newer.shortSha} and ${newer.shortSha} identify the same commit.`,
+    );
+    expect(describeCompareRelation(compare)).not.toContain('identical of');
+    expect(describeCompareChanges(compare)).toBe('No file differs between them.');
+  });
+
+  it('describes a diverged comparison with both distances', () => {
+    // A linear history never diverges, so this one is stated directly.
+    const compare: RepoCompare = {
+      ...compareLocalHistory(source, older.sha, newer.sha)!,
+      status: 'diverged',
+      aheadBy: 3,
+      behindBy: 5,
+    };
+
+    expect(describeCompareRelation(compare)).toBe(
+      `${newer.shortSha} is 3 commits ahead of and 5 commits behind ${older.shortSha}.`,
+    );
+    expect(describeCompareRelation(compare)).not.toContain('diverged of');
+  });
+
+  it('never says the old, reversed sentence', () => {
+    for (const [a, b] of [
+      [older.sha, newer.sha],
+      [newer.sha, older.sha],
+      [newer.sha, newer.sha],
+    ]) {
+      const compare = compareLocalHistory(source, a!, b!)!;
+      const sentence = describeComparison(compare);
+      // The template that produced "base is ahead of head" is gone.
+      expect(sentence).not.toBe(
+        `${compare.base.shortSha} is ${compare.status} of ${compare.head.shortSha}:`,
+      );
+      expect(sentence).not.toMatch(/is (ahead|behind|identical|diverged) of [0-9a-f]{7}:/);
+    }
+  });
+
+  it('appends the file and line totals of that same comparison', () => {
+    const compare = compareLocalHistory(source, older.sha, newer.sha)!;
+    expect(describeCompareChanges(compare)).toBe(
+      `${compare.changedFiles} files changed, ${compare.additions} lines added and ${compare.deletions} removed.`,
+    );
+    expect(describeComparison(compare)).toBe(
+      `${describeCompareRelation(compare)} ${describeCompareChanges(compare)}`,
+    );
+  });
+
+  it('uses singular nouns for a count of one', () => {
+    const single = compareLocalHistory(source, source.commits[0]!.sha, source.commits[1]!.sha)!;
+    expect(single.aheadBy).toBe(1);
+    expect(describeCompareRelation(single)).toContain('1 commit ahead of');
+    expect(describeCompareRelation(single)).not.toContain('1 commits');
+    expect(describeCompareChanges(single)).toBe('1 file changed, 3 lines added and 1 removed.');
+  });
+
+  it('separates thousands, matching the numbers on screen', () => {
+    const compare: RepoCompare = {
+      ...compareLocalHistory(source, older.sha, newer.sha)!,
+      aheadBy: 1234,
+      changedFiles: 2048,
+      additions: 12760,
+      deletions: 509,
+    };
+    const sentence = describeComparison(compare);
+    expect(sentence).toContain('1,234 commits ahead of');
+    expect(sentence).toContain('2,048 files changed');
+    expect(sentence).toContain('12,760 lines added and 509 removed');
   });
 });
