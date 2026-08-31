@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   compareButton,
   comparePicker,
@@ -11,7 +11,7 @@ import {
 } from './helpers';
 
 /** Counts requests that left for GitHub, which for the demo must always be none. */
-function watchGitHub(page: import('@playwright/test').Page): string[] {
+function watchGitHub(page: Page): string[] {
   const calls: string[] = [];
   page.on('request', (request) => {
     if (new URL(request.url()).hostname.includes('github')) calls.push(request.url());

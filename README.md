@@ -153,6 +153,55 @@ When you stop on a commit, one extra tree request upgrades that position to
 - **Force-pushes and rewritten history** are invisible: the API only reports the
   branch as it stands now.
 
+## Comparing two points
+
+The timeline answers *what did this commit do*. A second view answers *what is
+different between these two points*, which is not the same question: it needs the
+net difference, not the sum of the commits in between.
+
+Pick either end from a tag or from any commit in the loaded range. Comparing two
+releases is the case this was built for, so tags come first in both pickers.
+
+What it shows:
+
+- the relation (`ahead`, `behind`, `identical`, `diverged`) and how far;
+- the net per-file difference, with expandable diffs;
+- the commits between the two points;
+- the two ends measured against each other — file counts, tracked bytes,
+  top-level folders, which folders appeared or disappeared, and the file-type mix
+  on a shared colour scale.
+
+Swapping the ends reads the difference backwards and says `behind`. A comparison
+owns the address bar while it is open (`?repo=…&base=…&head=…`), so a link opens
+straight into it and Back returns to the timeline.
+
+### Where the numbers come from
+
+For a live repository, one request to GitHub's compare endpoint returns the
+relation, the commits and the net file list together. It is addressed by two
+shas, so the result never changes and is cached for a day. The payload has one
+gap — it describes `base_commit` but never a head commit, and when head is an
+ancestor of base the commit list is empty — so a second very small request
+identifies head rather than leaving a bare sha on screen.
+
+For the built-in demo, and for the recorded fixtures, the comparison is computed
+locally. Where a tree is known at both ends the net difference is read off those
+two trees rather than replayed from diffs, which stays exact however many times a
+file was touched in between. Where a tree is missing at one end it falls back to
+the loaded diffs and says the file list is incomplete.
+
+### What it does not do
+
+There is no generated summary of a comparison. Every number is counted from a
+tree or a diff, and anything that cannot be counted says so instead of being
+estimated into a sentence.
+
+One consequence is worth stating plainly: a diff is only attached to a net change
+when exactly one recorded hunk **is** that change. If a file was touched more
+than once between the two points, no single hunk describes the difference, so the
+file reports `changed more than once` and shows only the summed line counts.
+Showing one commit's hunk as the whole change would be wrong.
+
 ## GitHub API architecture
 
 ```
@@ -458,6 +507,12 @@ rate-limit floor stopping background work.
 Component tests (jsdom) cover the transport controls, the tree markers and the
 patch fallbacks, including that hostile commit messages, author names, file names
 and patch content render as text and create no elements.
+
+The comparison has its own suite: the net difference read from two trees, line
+counts summed across a range, a patch offered only when one hunk is the whole
+difference, direction reversal, the degraded path when a tree is missing, and the
+adapter's handling of a payload that cannot identify head. Its callbacks are also
+tested detached from the controller, because that is how buttons receive them.
 
 A dedicated suite pins the built-in demo: exactly sixteen commits, sixteen unique
 valid object ids, chronological timestamps, a detail record and an exact tree for
