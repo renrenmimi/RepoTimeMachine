@@ -52,8 +52,10 @@ describe('tracked source files are text', () => {
     for (const file of files) {
       const data = readFileSync(path.join(ROOT, file));
       const decoded = new TextDecoder('utf-8', { fatal: false }).decode(data);
-      // U+FFFD only appears when a byte sequence was not valid UTF-8.
-      if (decoded.includes('�')) offenders.push(file);
+      // U+FFFD only appears when a byte sequence was not valid UTF-8. Written as
+      // an escape for the same reason as everything else here: a literal one in
+      // this file would make the file trip its own check.
+      if (decoded.includes('\uFFFD')) offenders.push(file);
     }
     expect(offenders).toEqual([]);
   });
