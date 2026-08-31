@@ -16,12 +16,16 @@ describe('parseAppUrl', () => {
   });
 
   it('reads a repository with no commit', () => {
-    expect(parseAppUrl('?repo=a%2Fb')).toEqual({ repo: expect.objectContaining({ slug: 'a/b' }), commit: null });
+    expect(parseAppUrl('?repo=a%2Fb')).toEqual({
+      repo: expect.objectContaining({ slug: 'a/b' }),
+      commit: null,
+      compare: null,
+    });
   });
 
   it('returns the empty state for an empty query', () => {
-    expect(parseAppUrl('')).toEqual({ repo: null, commit: null });
-    expect(parseAppUrl('?')).toEqual({ repo: null, commit: null });
+    expect(parseAppUrl('')).toEqual({ repo: null, commit: null, compare: null });
+    expect(parseAppUrl('?')).toEqual({ repo: null, commit: null, compare: null });
   });
 
   it('accepts a leading question mark or a URLSearchParams', () => {
@@ -34,8 +38,12 @@ describe('parseAppUrl', () => {
   });
 
   it('drops an invalid repository entirely', () => {
-    expect(parseAppUrl('?repo=https%3A%2F%2Fgitlab.com%2Fa%2Fb')).toEqual({ repo: null, commit: null });
-    expect(parseAppUrl('?repo=nonsense')).toEqual({ repo: null, commit: null });
+    expect(parseAppUrl('?repo=https%3A%2F%2Fgitlab.com%2Fa%2Fb')).toEqual({
+      repo: null,
+      commit: null,
+      compare: null,
+    });
+    expect(parseAppUrl('?repo=nonsense')).toEqual({ repo: null, commit: null, compare: null });
   });
 
   it('drops a malformed commit but keeps the repository', () => {
@@ -45,7 +53,7 @@ describe('parseAppUrl', () => {
   });
 
   it('ignores a commit with no repository, since it means nothing on its own', () => {
-    expect(parseAppUrl('?c=6cc6ba6')).toEqual({ repo: null, commit: null });
+    expect(parseAppUrl('?c=6cc6ba6')).toEqual({ repo: null, commit: null, compare: null });
   });
 
   it('accepts a full GitHub URL in the repo parameter', () => {
@@ -97,5 +105,72 @@ describe('sameUrlState', () => {
     expect(sameUrlState({ repo: ref('a/b'), commit: 'x1' }, { repo: ref('a/b'), commit: 'x2' })).toBe(false);
     expect(sameUrlState({ repo: ref('a/b'), commit: null }, { repo: ref('a/c'), commit: null })).toBe(false);
     expect(sameUrlState({ repo: null, commit: null }, { repo: null, commit: null })).toBe(true);
+  });
+});
+
+
+describe('comparison in the URL', () => {
+  const base = 'a'.repeat(40);
+  const head = 'b'.repeat(40);
+
+  it('reads both ends of a comparison', () => {
+    const state = parseAppUrl(`?repo=a%2Fb&base=${base}&head=${head}`);
+    expect(state.repo?.slug).toBe('a/b');
+    expect(state.compare).toEqual({ base, head });
+  });
+
+  it('needs both ends: one alone describes nothing', () => {
+    expect(parseAppUrl(`?repo=a%2Fb&base=${base}`).compare).toBeNull();
+    expect(parseAppUrl(`?repo=a%2Fb&head=${head}`).compare).toBeNull();
+  });
+
+  it('ignores a comparison with no repository', () => {
+    expect(parseAppUrl(`?base=${base}&head=${head}`).compare).toBeNull();
+  });
+
+  it('drops a malformed end rather than half-opening the view', () => {
+    expect(parseAppUrl(`?repo=a%2Fb&base=nope&head=${head}`).compare).toBeNull();
+    expect(parseAppUrl(`?repo=a%2Fb&base=${base}&head=..%2F..%2Fetc`).compare).toBeNull();
+  });
+
+  it('lowercases both ends, so shared links are case-insensitive', () => {
+    const state = parseAppUrl('?repo=a%2Fb&base=ABCDEF1&head=1FEDCBA');
+    expect(state.compare).toEqual({ base: 'abcdef1', head: '1fedcba' });
+  });
+
+  it('writes an abbreviated comparison', () => {
+    const url = buildAppUrl({ repo: ref('a/b'), commit: null, compare: { base, head } });
+    expect(url).toBe(`/?repo=a%2Fb&base=${'a'.repeat(10)}&head=${'b'.repeat(10)}`);
+  });
+
+  it('replaces the playhead rather than sitting beside it', () => {
+    const url = buildAppUrl({ repo: ref('a/b'), commit: 'c'.repeat(40), compare: { base, head } });
+    expect(url).not.toContain('c=');
+    expect(url).toContain('base=');
+  });
+
+  it('falls back to the playhead when a comparison end is invalid', () => {
+    const url = buildAppUrl({
+      repo: ref('a/b'),
+      commit: 'c'.repeat(40),
+      compare: { base, head: 'nope' },
+    });
+    expect(url).toContain(`c=${'c'.repeat(10)}`);
+    expect(url).not.toContain('base=');
+  });
+
+  it('round-trips a comparison', () => {
+    const original = { repo: ref('octocat/hello-world'), commit: null, compare: { base, head } };
+    const restored = parseAppUrl(buildAppUrl(original).replace('/?', '?'));
+    expect(restored.repo?.slug).toBe('octocat/hello-world');
+    expect(base.startsWith(restored.compare!.base)).toBe(true);
+    expect(head.startsWith(restored.compare!.head)).toBe(true);
+  });
+
+  it('compares comparisons in sameUrlState', () => {
+    const a = { repo: ref('a/b'), commit: null, compare: { base, head } };
+    expect(sameUrlState(a, { ...a })).toBe(true);
+    expect(sameUrlState(a, { ...a, compare: { base: head, head: base } })).toBe(false);
+    expect(sameUrlState(a, { ...a, compare: null })).toBe(false);
   });
 });

@@ -60,6 +60,36 @@ export function readSha(params: URLSearchParams): string {
   return sha;
 }
 
+/**
+ * The two endpoints of a comparison.
+ *
+ * Both must be shas. Tag names are resolved to shas in the browser before the
+ * request is made, so nothing but validated hex ever reaches the path GitHub
+ * builds from `base...head`.
+ */
+export function readComparePair(params: URLSearchParams): { base: string; head: string } {
+  const base = (params.get('base') ?? '').toLowerCase();
+  const head = (params.get('head') ?? '').toLowerCase();
+  if (!isValidSha(base) || !isValidSha(head)) {
+    throw new GitHubError('invalid-input', 'Both sides of a comparison must be commit shas.', {
+      origin: 'local',
+    });
+  }
+  return { base, head };
+}
+
+/** Optional human labels for the two sides, echoed back for display only. */
+export function readCompareLabels(params: URLSearchParams): { base: string | null; head: string | null } {
+  const clean = (value: string | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    // Tag names only; anything else is dropped rather than rendered.
+    if (!trimmed || trimmed.length > 120 || !/^[\w.+/-]+$/.test(trimmed)) return null;
+    return trimmed;
+  };
+  return { base: clean(params.get('baseLabel')), head: clean(params.get('headLabel')) };
+}
+
 export function readPage(params: URLSearchParams): number {
   const raw = Number(params.get('page') ?? '1');
   if (!Number.isFinite(raw) || raw < 1) {

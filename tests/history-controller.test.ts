@@ -533,3 +533,214 @@ describe('request efficiency', () => {
     expect(api.countOf('tree')).toBeGreaterThan(2);
   });
 });
+
+describe('comparing two points', () => {
+  it('loads a comparison and reports the relation', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+
+    const { commits } = controller.getState();
+    controller.openCompare(commits[2]!.sha, commits[9]!.sha);
+    expect(controller.getState().compare).toMatchObject({ open: true, status: 'loading' });
+
+    await until(() => controller.getState().compare.status === 'ready');
+    const compare = controller.getState().compare.data!;
+    expect(compare.status).toBe('ahead');
+    expect(compare.aheadBy).toBe(7);
+    expect(compare.commits).toHaveLength(7);
+    expect(api.countOf('compare')).toBe(1);
+  });
+
+  it('replaces one end and keeps the other', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[0]!.sha, commits[5]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    controller.setCompareEnd('head', commits[8]!.sha);
+    await until(() => controller.getState().compare.data?.head.sha === commits[8]!.sha);
+
+    const state = controller.getState().compare;
+    expect(state.base).toBe(commits[0]!.sha);
+    expect(state.data?.aheadBy).toBe(8);
+  });
+
+  it('swaps the two ends, which reverses the difference', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[1]!.sha, commits[6]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+    const forward = controller.getState().compare.data!;
+
+    controller.swapCompare();
+    await until(() => controller.getState().compare.data?.status === 'behind');
+    const backward = controller.getState().compare.data!;
+
+    expect(backward.base.sha).toBe(forward.head.sha);
+    expect(backward.head.sha).toBe(forward.base.sha);
+    expect(backward.behindBy).toBe(forward.aheadBy);
+    expect(backward.additions).toBe(forward.deletions);
+  });
+
+  it('carries a tag label through to the endpoint', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits, tags } = controller.getState();
+    await settle(controller);
+
+    const tag = controller.getState().tags[0] ?? tags[0];
+    if (!tag) return; // the fixture has no tags to label with
+
+    controller.openCompare(commits[0]!.sha, tag.sha, { head: tag.name });
+    await until(() => controller.getState().compare.status === 'ready');
+    expect(controller.getState().compare.data?.head).toMatchObject({ kind: 'tag', tagName: tag.name });
+  });
+
+  it('closes without touching the timeline position', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+    controller.dispatchPlayback({ type: 'seek', index: 4 });
+
+    const { commits } = controller.getState();
+    controller.openCompare(commits[0]!.sha, commits[3]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    controller.closeCompare();
+    expect(controller.getState().compare.open).toBe(false);
+    expect(controller.getState().compare.data).toBeNull();
+    expect(controller.getState().playback.index).toBe(4);
+  });
+
+  it('de-duplicates a comparison already loaded', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[1]!.sha, commits[4]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+    controller.closeCompare();
+    controller.openCompare(commits[1]!.sha, commits[4]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    expect(api.countOf('compare')).toBe(1);
+  });
+
+  it('surfaces a failure without leaving the view blank', async () => {
+    const api = new FakeApi({ bundles: BUNDLES, fail: { compare: rateLimited() } });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[0]!.sha, commits[3]!.sha);
+    await until(() => controller.getState().compare.status === 'error');
+
+    expect(controller.getState().compare.error?.code).toBe('rate-limited');
+    expect(controller.getState().compare.open).toBe(true);
+    // The timeline itself is unaffected.
+    expect(controller.getState().status).toBe('ready');
+  });
+
+  it('discards a comparison superseded by a newer pick', async () => {
+    const api = new FakeApi({ bundles: BUNDLES, latency: 25 });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[0]!.sha, commits[3]!.sha);
+    controller.openCompare(commits[0]!.sha, commits[7]!.sha);
+    await until(() => controller.getState().compare.status === 'ready', 3000);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    // The later pick wins, and the earlier one cannot overwrite it.
+    expect(controller.getState().compare.head).toBe(commits[7]!.sha);
+    expect(controller.getState().compare.data?.head.sha).toBe(commits[7]!.sha);
+  });
+
+  it('drops a comparison when the repository changes', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+    controller.openCompare(commits[0]!.sha, commits[4]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    await controller.load(TINY);
+    expect(controller.getState().compare.open).toBe(false);
+    expect(controller.getState().compare.data).toBeNull();
+  });
+
+  it('opens straight into a comparison from a shared link', async () => {
+    const probe = make(new FakeApi({ bundles: BUNDLES }));
+    await probe.load(MEDIUM);
+    const { commits } = probe.getState();
+
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM, null, {
+      base: commits[2]!.sha.slice(0, 10),
+      head: commits[8]!.sha.slice(0, 10),
+    });
+    await until(() => controller.getState().compare.status === 'ready');
+
+    const compare = controller.getState().compare.data!;
+    expect(compare.base.sha).toBe(commits[2]!.sha);
+    expect(compare.head.sha).toBe(commits[8]!.sha);
+  });
+
+  it('ignores an incomplete pick rather than requesting half a comparison', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+
+    // Nothing is open, so setting one end alone cannot form a comparison.
+    controller.setCompareEnd('head', controller.getState().commits[3]!.sha);
+    expect(controller.getState().compare.open).toBe(false);
+    expect(api.countOf('compare')).toBe(0);
+
+    controller.swapCompare();
+    expect(api.countOf('compare')).toBe(0);
+  });
+
+  it('survives its compare callbacks being passed around detached', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    // Exactly how the interface hands these to a button's onClick.
+    const { openCompare, setCompareEnd, swapCompare, closeCompare } = controller;
+
+    openCompare(commits[1]!.sha, commits[5]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+    expect(controller.getState().compare.data?.status).toBe('ahead');
+
+    swapCompare();
+    await until(() => controller.getState().compare.data?.status === 'behind');
+
+    setCompareEnd('head', commits[0]!.sha);
+    await until(() => controller.getState().compare.data?.head.sha === commits[0]!.sha);
+
+    closeCompare();
+    expect(controller.getState().compare.open).toBe(false);
+  });
+
+  it('reports two identical points as identical', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+    const sha = controller.getState().commits[3]!.sha;
+
+    controller.openCompare(sha, sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    const compare = controller.getState().compare.data!;
+    expect(compare.status).toBe('identical');
+    expect(compare.files).toEqual([]);
+    expect(compare.aheadBy).toBe(0);
+  });
+});

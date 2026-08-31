@@ -91,6 +91,34 @@ export function builtinBadge(page: Page) {
   return page.locator('[class*="builtinBadge"]');
 }
 
+/** The entry point into the side-by-side comparison. */
+export function compareButton(page: Page) {
+  return page.getByRole('button', { name: 'Compare' });
+}
+
+/** One of the two endpoint pickers in the comparison view. */
+export function comparePicker(page: Page, side: 'base' | 'head') {
+  return page.getByRole('button', { name: new RegExp(`^${side}`, 'i') }).first();
+}
+
+/** The relation word in a comparison summary: ahead, behind, identical, diverged. */
+export function compareStatus(page: Page) {
+  return page.locator('[class*="statusValue"]');
+}
+
+/**
+ * Waits until the repository's tags have arrived.
+ *
+ * They load in the background, and the comparison's default base depends on
+ * them, so a test that asserts that default has to wait for the evidence they
+ * landed: the tag milestone.
+ */
+export async function waitForTags(page: Page, tagName: string): Promise<void> {
+  await page.getByRole('tab', { name: 'Milestones' }).click();
+  await expect(page.getByText(`Tagged ${tagName}`).first()).toBeVisible();
+  await page.getByRole('tab', { name: 'Growth' }).click();
+}
+
 /** The GitHub quota meter, in either the known or the not-yet-observed state. */
 export function quotaMeter(page: Page) {
   return page.getByLabel('GitHub request quota');

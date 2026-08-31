@@ -17,6 +17,7 @@ import { GET as getCommit } from '@/app/api/gh/commit/route';
 import { GET as getTree } from '@/app/api/gh/tree/route';
 import { GET as getTags } from '@/app/api/gh/tags/route';
 import { GET as getProbe } from '@/app/api/gh/probe/route';
+import { GET as getCompare } from '@/app/api/gh/compare/route';
 
 type Handler = (request: Request) => Promise<Response>;
 
@@ -28,6 +29,12 @@ const ROUTES: { name: string; handler: Handler; path: string; extra?: string }[]
   { name: '/api/gh/tree', handler: getTree, path: 'tree', extra: `sha=${'a'.repeat(40)}` },
   { name: '/api/gh/tags', handler: getTags, path: 'tags' },
   { name: '/api/gh/probe', handler: getProbe, path: 'probe', extra: 'branch=main&path=README.md' },
+  {
+    name: '/api/gh/compare',
+    handler: getCompare,
+    path: 'compare',
+    extra: `base=${'a'.repeat(40)}&head=${'b'.repeat(40)}`,
+  },
 ];
 
 function url(path: string, slug: string, extra?: string): string {
@@ -91,13 +98,17 @@ describe('the built-in demo, over the routes', () => {
 
   it('answers every endpoint without a single GitHub request', async () => {
     const list = await call(ROUTES[1]!, BUILTIN_DEMO_SLUG);
-    const sha = list.body.data.commits[0].sha;
+    const commits = list.body.data.commits as { sha: string }[];
+    const sha = commits[0]!.sha;
 
     for (const route of ROUTES) {
+      // Routes addressed by sha need real ones from this history.
       const extra =
         route.path === 'commit' || route.path === 'tree'
           ? `sha=${sha}`
-          : route.extra;
+          : route.path === 'compare'
+            ? `base=${commits[commits.length - 1]!.sha}&head=${sha}`
+            : route.extra;
       const response = await route.handler(new Request(url(route.path, BUILTIN_DEMO_SLUG, extra)));
       expect(response.status, route.name).toBe(200);
     }
@@ -284,5 +295,128 @@ describe('live repositories are unaffected', () => {
     } finally {
       delete process.env.GITHUB_TOKEN;
     }
+  });
+});
+
+describe('the compare route', () => {
+  const path = 'compare';
+
+  async function compareUrl(base: string, head: string, slug = BUILTIN_DEMO_SLUG) {
+    const response = await getCompare(new Request(url(path, slug, `base=${base}&head=${head}`)));
+    return { status: response.status, body: await response.json() };
+  }
+
+  it('compares two points of the built-in demo with no GitHub request', async () => {
+    const list = await call(ROUTES[1]!, BUILTIN_DEMO_SLUG);
+    const commits = list.body.data.commits as { sha: string }[];
+    // The list is newest-first, so these are 10 apart in the history.
+    const head = commits[0]!.sha;
+    const base = commits[10]!.sha;
+
+    const { status, body } = await compareUrl(base, head);
+    expect(status).toBe(200);
+    expect(body.data.compare.status).toBe('ahead');
+    expect(body.data.compare.aheadBy).toBe(10);
+    expect(body.data.compare.commits).toHaveLength(10);
+    expect(body.data.compare.files.length).toBeGreaterThan(0);
+    expect(body.data.compare.htmlUrl).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('accepts abbreviated shas, as a shared link carries', async () => {
+    const list = await call(ROUTES[1]!, BUILTIN_DEMO_SLUG);
+    const commits = list.body.data.commits as { sha: string }[];
+
+    const { status, body } = await compareUrl(commits[5]!.sha.slice(0, 10), commits[0]!.sha.slice(0, 10));
+    expect(status).toBe(200);
+    expect(body.data.compare.aheadBy).toBe(5);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports two identical points as identical, with nothing changed', async () => {
+    const list = await call(ROUTES[1]!, BUILTIN_DEMO_SLUG);
+    const sha = (list.body.data.commits as { sha: string }[])[3]!.sha;
+
+    const { status, body } = await compareUrl(sha, sha);
+    expect(status).toBe(200);
+    expect(body.data.compare.status).toBe('identical');
+    expect(body.data.compare.files).toEqual([]);
+  });
+
+  it.each([
+    ['a missing base', `head=${'a'.repeat(40)}`],
+    ['a missing head', `base=${'a'.repeat(40)}`],
+    ['a malformed base', `base=nope&head=${'a'.repeat(40)}`],
+    ['a traversal attempt', `base=..%2F..&head=${'a'.repeat(40)}`],
+    ['a branch name instead of a sha', `base=main&head=${'a'.repeat(40)}`],
+  ])('rejects %s before any request', async (_name, query) => {
+    const response = await getCompare(new Request(url(path, BUILTIN_DEMO_SLUG, query)));
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe('invalid-input');
+    expect(body.rateLimit).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses a sha that is not part of the demo, locally', async () => {
+    const { status, body } = await compareUrl('a'.repeat(40), 'b'.repeat(40));
+    expect(status).toBe(404);
+    expect(body.error.code).toBe('not-found');
+    expect(body.rateLimit).toBeNull();
+    expect(body.rateLimitAgeMs).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown demo reference locally', async () => {
+    const { status, body } = await compareUrl('a'.repeat(40), 'b'.repeat(40), 'demo/not-a-real-demo');
+    expect(status).toBe(404);
+    expect(body.rateLimit).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('builds a compare request for a live repository', async () => {
+    const base = 'a'.repeat(40);
+    const head = 'b'.repeat(40);
+    fetchSpy.mockImplementation(async () =>
+      githubResponse({
+        status: 'ahead',
+        ahead_by: 1,
+        behind_by: 0,
+        total_commits: 1,
+        base_commit: { sha: base, html_url: '', commit: { message: 'base', author: null, committer: null }, author: null, parents: [] },
+        commits: [
+          { sha: head, html_url: '', commit: { message: 'head', author: null, committer: null }, author: null, parents: [] },
+        ],
+        files: [],
+      }),
+    );
+
+    const response = await getCompare(
+      new Request(url(path, 'octocat/hello-world', `base=${base}&head=${head}`)),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String((fetchSpy.mock.calls[0] as unknown[])[0])).toBe(
+      `https://api.github.com/repos/octocat/hello-world/compare/${base}...${head}`,
+    );
+  });
+
+  it('drops a label that is not a plausible tag name', async () => {
+    const list = await call(ROUTES[1]!, BUILTIN_DEMO_SLUG);
+    const commits = list.body.data.commits as { sha: string }[];
+    const response = await getCompare(
+      new Request(
+        url(
+          path,
+          BUILTIN_DEMO_SLUG,
+          `base=${commits[2]!.sha}&head=${commits[0]!.sha}&headLabel=${encodeURIComponent('<script>x</script>')}`,
+        ),
+      ),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    // The label was refused, so the endpoint stays a plain commit.
+    expect(body.data.compare.head.tagName).toBeNull();
+    expect(body.data.compare.head.kind).toBe('commit');
   });
 });

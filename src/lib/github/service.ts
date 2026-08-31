@@ -4,6 +4,7 @@ import { BUILTIN_DEMO_SLUG } from '@/lib/builtin/learning-platform';
 import {
   builtinCommitDetail,
   builtinCommitPage,
+  builtinCompare,
   builtinFirstCommitForPath,
   builtinRepoMeta,
   builtinTags,
@@ -11,15 +12,23 @@ import {
   isBuiltinRef,
   isUnknownBuiltinRef,
 } from '@/lib/builtin/provider';
-import type { Commit, CommitDetail, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
+import { compareLocalHistory } from '@/lib/compare/local';
+import type { Commit, CommitDetail, RepoCompare, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
 import type { RepoRef } from '@/lib/repo-ref';
-import { toCommit, toCommitDetail, toRepoMeta, toRepoTree, toTags } from './adapter';
+import { toCommit, toCommitDetail, toRepoCompare, toRepoMeta, toRepoTree, toTags } from './adapter';
 import { githubFetch, pageFromLink } from './client';
 import { GitHubError } from './errors';
 import { fixtureCommitDetail, fixtureTree } from './fixture-bundle';
 import { loadFixtures, fixtureModeEnabled } from './fixtures';
 import { recordRateLimit } from './rate-limit-store';
-import type { RawCommitDetail, RawCommitListItem, RawRepo, RawTag, RawTree } from './raw-types';
+import type {
+  RawCommitDetail,
+  RawCommitListItem,
+  RawCompare,
+  RawRepo,
+  RawTag,
+  RawTree,
+} from './raw-types';
 
 /** Cache lifetimes, in seconds. Sha-addressed data is immutable, so it can live for a day. */
 export const REVALIDATE = {
@@ -29,6 +38,7 @@ export const REVALIDATE = {
   tree: 86_400,
   tags: 600,
   probe: 3_600,
+  compare: 86_400,
 } as const;
 
 export const COMMITS_PER_PAGE = 100;
@@ -253,4 +263,108 @@ export async function probeFirstCommitForPath(
   });
   const items = Array.isArray(last.data) ? last.data : [];
   return { firstSha: items[items.length - 1]?.sha ?? null, incomplete: false };
+}
+
+
+export type CompareLabels = { base: string | null; head: string | null };
+
+/**
+ * Compares two points of a repository.
+ *
+ * For a live repository this is a single request: GitHub's compare endpoint
+ * returns how the two relate, the commits between them, and the net per-file
+ * difference all at once. It is sha-addressed, so the result is cached for a day.
+ *
+ * The response has one gap — it describes `base_commit` but never a head commit,
+ * and when head is an ancestor of base the commit list is empty. In that case one
+ * extra, very small request identifies head rather than leaving the interface
+ * with a bare sha.
+ */
+export async function fetchCompare(
+  ref: RepoRef,
+  base: string,
+  head: string,
+  labels: CompareLabels = { base: null, head: null },
+): Promise<RepoCompare> {
+  if (servedFromBuiltin(ref)) {
+    const compare = builtinCompare(base, head);
+    if (!compare) {
+      throw new GitHubError('not-found', 'One of those commits is not part of the built-in demo.', {
+        origin: 'local',
+      });
+    }
+    return compare;
+  }
+
+  if (fixtureModeEnabled()) {
+    const fixtures = await loadFixtures(ref);
+    // Oldest first, so indices line up with the shared comparison.
+    const commits = [...fixtures.commits].reverse().map((raw, index) => toCommit(raw, index));
+    const compare = compareLocalHistory(
+      {
+        commits,
+        snapshotAt: (sha) => {
+          const raw = fixtureTree(fixtures, sha);
+          if (!raw) return null;
+          const out = new Map<string, string>();
+          for (const entry of raw.tree) {
+            if (entry.type === 'blob') out.set(entry.path, entry.sha);
+          }
+          return out;
+        },
+        detailOf: (sha) => {
+          const raw = fixtureCommitDetail(fixtures, sha);
+          return raw ? toCommitDetail(raw) : null;
+        },
+        tagOf: (sha) => fixtures.tags.find((tag) => tag.commit.sha === sha)?.name ?? null,
+      },
+      base,
+      head,
+    );
+    if (!compare) {
+      throw new GitHubError('not-found', 'One of those commits is not in the recorded fixture.', {
+        origin: 'local',
+      });
+    }
+    return compare;
+  }
+
+  const { data } = await request<RawCompare>({
+    // `base...head` is one path segment as far as the API is concerned, and both
+    // halves are validated shas before they get here.
+    segments: ['repos', ref.owner, ref.repo, 'compare', `${base}...${head}`],
+    revalidate: REVALIDATE.compare,
+  });
+  if (!data) throw new GitHubError('not-found', 'Those two points could not be compared.');
+
+  const commits = Array.isArray(data.commits) ? data.commits : [];
+  const last = commits[commits.length - 1];
+  const headIsKnown = Boolean(last && last.sha.startsWith(head.toLowerCase()));
+
+  return toRepoCompare(data, {
+    requestedHeadSha: head,
+    headCommit: headIsKnown ? null : await describeCommit(ref, head),
+    labels,
+  });
+}
+
+/**
+ * Identifies a single commit without downloading its diff.
+ *
+ * The list endpoint filtered to one sha returns the metadata and no files, which
+ * is all that is needed to label an endpoint. Failure is not fatal: the interface
+ * falls back to showing the sha alone.
+ */
+async function describeCommit(ref: RepoRef, sha: string): Promise<Commit | null> {
+  try {
+    const { data } = await request<RawCommitListItem[]>({
+      segments: ['repos', ref.owner, ref.repo, 'commits'],
+      query: { sha, per_page: 1 },
+      revalidate: REVALIDATE.commitDetail,
+    });
+    const item = Array.isArray(data) ? data[0] : undefined;
+    return item ? toCommit(item, 0) : null;
+  } catch {
+    return null;
+  }
 }

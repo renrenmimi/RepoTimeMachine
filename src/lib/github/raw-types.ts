@@ -65,3 +65,16 @@ export type RawTag = {
   name: string;
   commit: { sha: string };
 };
+
+export type RawCompare = {
+  html_url?: string | null;
+  permalink_url?: string | null;
+  status: string;
+  ahead_by: number;
+  behind_by: number;
+  total_commits: number;
+  base_commit: RawCommitListItem;
+  merge_base_commit?: RawCommitListItem | null;
+  commits?: RawCommitListItem[] | null;
+  files?: RawCommitFile[] | null;
+};
