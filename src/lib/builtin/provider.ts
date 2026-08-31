@@ -1,7 +1,9 @@
+import { compareLocalHistory, resolveLocalSha } from '@/lib/compare/local';
 import type {
   Commit,
   CommitDetail,
   FileChange,
+  RepoCompare,
   RepoMeta,
   RepoTree,
   Tag,
@@ -295,6 +297,43 @@ export function builtinFirstCommitForPath(path: string): string | null {
     if (spec.changes.some((change) => change.path === path || change.from === path)) return spec.sha;
   }
   return null;
+}
+
+/** Resolves a full or abbreviated sha to a demo commit, or null. */
+export function builtinResolveSha(sha: string): Commit | null {
+  return resolveLocalSha(demo().commits, sha);
+}
+
+/**
+ * Compares two points of the demo, entirely locally.
+ *
+ * The demo stores a full tree at every commit, so the shared comparison takes
+ * its exact branch: the net difference is read off the two trees rather than
+ * replayed from diffs, which stays correct however many times a file was touched
+ * in between.
+ */
+export function builtinCompare(baseSha: string, headSha: string): RepoCompare | null {
+  const built = demo();
+  return compareLocalHistory(
+    {
+      commits: built.commits,
+      snapshotAt: (sha) => blobMap(built.trees.get(sha)),
+      detailOf: (sha) => built.details.get(sha) ?? null,
+      tagOf: (sha) => built.tags.find((tag) => tag.sha === sha)?.name ?? null,
+    },
+    baseSha,
+    headSha,
+  );
+}
+
+/** path -> blob id for one tree, or null when the tree is unknown. */
+function blobMap(tree: RepoTree | undefined): Map<string, string> | null {
+  if (!tree) return null;
+  const out = new Map<string, string>();
+  for (const entry of tree.entries) {
+    if (entry.type === 'blob') out.set(entry.path, entry.sha);
+  }
+  return out;
 }
 
 /** Test seam. */

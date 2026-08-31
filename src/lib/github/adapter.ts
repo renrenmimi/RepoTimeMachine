@@ -1,8 +1,11 @@
 import type {
   Commit,
   CommitDetail,
+  CompareEndpoint,
+  CompareStatus,
   FileChange,
   FileChangeStatus,
+  RepoCompare,
   RepoMeta,
   RepoTree,
   Tag,
@@ -12,6 +15,7 @@ import type {
   RawCommitDetail,
   RawCommitFile,
   RawCommitListItem,
+  RawCompare,
   RawRepo,
   RawTag,
   RawTree,
@@ -23,6 +27,8 @@ export const MAX_PATCH_CHARS = 12_000;
 export const MAX_COMMIT_PATCH_CHARS = 240_000;
 /** GitHub itself caps a commit's file list at 300; mirror that so the number is not a surprise. */
 export const MAX_COMMIT_FILES = 300;
+/** …and a comparison's commit list at 250. */
+export const MAX_COMPARE_COMMITS = 250;
 
 export function toRepoMeta(raw: RawRepo, isEmpty: boolean): RepoMeta {
   return {
@@ -126,10 +132,18 @@ function toFileChange(raw: RawCommitFile, budget: { left: number }): FileChange 
   };
 }
 
+/**
+ * Maps a file list under one shared patch budget, so neither a commit nor a
+ * comparison can produce an unbounded response.
+ */
+function toFileChanges(rawFiles: readonly RawCommitFile[]): FileChange[] {
+  const budget = { left: MAX_COMMIT_PATCH_CHARS };
+  return rawFiles.slice(0, MAX_COMMIT_FILES).map((file) => toFileChange(file, budget));
+}
+
 export function toCommitDetail(raw: RawCommitDetail): CommitDetail {
   const rawFiles = Array.isArray(raw.files) ? raw.files : [];
-  const budget = { left: MAX_COMMIT_PATCH_CHARS };
-  const files = rawFiles.slice(0, MAX_COMMIT_FILES).map((file) => toFileChange(file, budget));
+  const files = toFileChanges(rawFiles);
   return {
     sha: raw.sha,
     additions: raw.stats?.additions ?? files.reduce((sum, f) => sum + f.additions, 0),
@@ -156,4 +170,103 @@ export function toRepoTree(raw: RawTree, commitSha: string): RepoTree {
 
 export function toTags(raw: RawTag[]): Tag[] {
   return (raw ?? []).map((tag) => ({ name: tag.name, sha: tag.commit.sha }));
+}
+
+const COMPARE_STATUSES: CompareStatus[] = ['identical', 'ahead', 'behind', 'diverged'];
+
+export function normaliseCompareStatus(status: string): CompareStatus {
+  const lower = (status ?? '').toLowerCase() as CompareStatus;
+  // An unrecognised value is reported as diverged rather than guessed at, because
+  // "we do not know how these relate" is closer to diverged than to identical.
+  return COMPARE_STATUSES.includes(lower) ? lower : 'diverged';
+}
+
+/** Builds an endpoint description from a commit, tagging it if a name was given. */
+export function toCompareEndpoint(
+  commit: Pick<Commit, 'sha' | 'shortSha' | 'subject' | 'htmlUrl'> & { author: { name: string; date: string } },
+  tagName: string | null,
+): CompareEndpoint {
+  return {
+    kind: tagName ? 'tag' : 'commit',
+    tagName,
+    sha: commit.sha,
+    shortSha: commit.shortSha,
+    subject: commit.subject,
+    authorName: commit.author.name,
+    date: commit.author.date,
+    htmlUrl: commit.htmlUrl,
+  };
+}
+
+/**
+ * Maps GitHub's compare response.
+ *
+ * The endpoint answers most of the question in one request: how the two points
+ * relate, the commits between them, and the net per-file difference. Both lists
+ * are capped by GitHub, so both truncation flags are reported rather than
+ * quietly dropped.
+ *
+ * One gap has to be filled by the caller. The response describes `base_commit`
+ * but has no `head_commit`, and when head is an ancestor of base the commit list
+ * is empty — so there is nothing in the payload to describe head with. The
+ * caller passes `headCommit` for exactly that case.
+ */
+export function toRepoCompare(
+  raw: RawCompare,
+  options: {
+    /** Sha the caller asked about, used when the payload cannot identify head. */
+    requestedHeadSha: string;
+    /** Head's own commit record, when the caller had to look it up separately. */
+    headCommit?: Commit | null;
+    labels: { base: string | null; head: string | null };
+  },
+): RepoCompare {
+  const rawCommits = Array.isArray(raw.commits) ? raw.commits : [];
+  const rawFiles = Array.isArray(raw.files) ? raw.files : [];
+
+  // Oldest first, matching the timeline's ordering everywhere else.
+  const commits = rawCommits.map((item, index) => toCommit(item, index));
+  const files = toFileChanges(rawFiles);
+
+  const baseCommit = toCommit(raw.base_commit, 0);
+  const last = commits[commits.length - 1];
+  const headFromList = last && last.sha.startsWith(options.requestedHeadSha.toLowerCase()) ? last : null;
+  const head = headFromList ?? options.headCommit ?? placeholderCommit(options.requestedHeadSha);
+
+  const total = raw.total_commits ?? commits.length;
+
+  return {
+    base: toCompareEndpoint(baseCommit, options.labels.base),
+    head: toCompareEndpoint(head, options.labels.head),
+    status: normaliseCompareStatus(raw.status),
+    aheadBy: raw.ahead_by ?? 0,
+    behindBy: raw.behind_by ?? 0,
+    commits,
+    commitsTruncated: total > commits.length,
+    files,
+    filesTruncated: rawFiles.length >= MAX_COMMIT_FILES,
+    additions: files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    changedFiles: rawFiles.length,
+    mergeBaseSha: raw.merge_base_commit?.sha ?? null,
+    htmlUrl: raw.html_url ?? raw.permalink_url ?? null,
+  };
+}
+
+/**
+ * A stand-in for a commit we could not describe. The sha is real; everything
+ * else is blank rather than invented, and the UI shows the sha alone.
+ */
+function placeholderCommit(sha: string): Commit {
+  return {
+    sha,
+    shortSha: sha.slice(0, 7),
+    subject: '',
+    body: '',
+    author: { name: '', login: null, avatarUrl: null, date: '' },
+    committerDate: '',
+    parents: [],
+    htmlUrl: null,
+    index: 0,
+  };
 }

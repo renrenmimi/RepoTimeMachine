@@ -2,6 +2,7 @@ import type {
   Commit,
   CommitDetail,
   RateLimitSnapshot,
+  RepoCompare,
   RepoMeta,
   RepoTree,
   Tag,
@@ -63,6 +64,8 @@ export type ProbePayload = {
   incomplete: boolean;
 };
 
+export type ComparePayload = { compare: RepoCompare };
+
 export const API_ROUTES = {
   repo: '/api/gh/repo',
   commits: '/api/gh/commits',
@@ -70,4 +73,5 @@ export const API_ROUTES = {
   tree: '/api/gh/tree',
   tags: '/api/gh/tags',
   probe: '/api/gh/probe',
+  compare: '/api/gh/compare',
 } as const;

@@ -5,6 +5,7 @@ import {
   type ApiResponse,
   type CommitDetailPayload,
   type CommitsPayload,
+  type ComparePayload,
   type ProbePayload,
   type RepoPayload,
   type TagsPayload,
@@ -102,6 +103,27 @@ export function fetchProbe(
   return call<ProbePayload>(API_ROUTES.probe, { owner: ref.owner, repo: ref.repo, branch, path }, options);
 }
 
+export function fetchCompare(
+  ref: RepoRef,
+  base: string,
+  head: string,
+  labels: { base: string | null; head: string | null } = { base: null, head: null },
+  options: FetchOptions = {},
+): Promise<ComparePayload> {
+  return call<ComparePayload>(
+    API_ROUTES.compare,
+    {
+      owner: ref.owner,
+      repo: ref.repo,
+      base,
+      head,
+      ...(labels.base ? { baseLabel: labels.base } : {}),
+      ...(labels.head ? { headLabel: labels.head } : {}),
+    },
+    options,
+  );
+}
+
 export type GitHubApi = {
   fetchRepo: typeof fetchRepo;
   fetchCommits: typeof fetchCommits;
@@ -109,6 +131,7 @@ export type GitHubApi = {
   fetchTree: typeof fetchTree;
   fetchTags: typeof fetchTags;
   fetchProbe: typeof fetchProbe;
+  fetchCompare: typeof fetchCompare;
 };
 
 /** The real implementation, injectable so tests can supply fixtures. */
@@ -119,4 +142,5 @@ export const browserApi: GitHubApi = {
   fetchTree,
   fetchTags,
   fetchProbe,
+  fetchCompare,
 };

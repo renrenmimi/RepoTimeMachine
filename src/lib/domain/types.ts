@@ -77,8 +77,12 @@ export type FileChange = {
   deletions: number;
   /** Unified diff hunk text, already length-capped. Null when GitHub omitted it. */
   patch: string | null;
-  /** Why `patch` is null, so the UI can explain itself instead of showing a blank box. */
-  patchOmittedReason: 'binary' | 'too-large' | 'not-provided' | null;
+  /**
+   * Why `patch` is null, so the UI can explain itself instead of showing a blank
+   * box. `aggregated` means the file changed more than once inside a compared
+   * range, so no single hunk describes the net difference.
+   */
+  patchOmittedReason: 'binary' | 'too-large' | 'not-provided' | 'aggregated' | null;
   /** True when we truncated a patch GitHub did provide. */
   patchTruncated: boolean;
   blobUrl: string | null;
@@ -122,6 +126,69 @@ export type CommitPage = {
 export type Tag = {
   name: string;
   sha: string;
+};
+
+/**
+ * How two points in a history relate. Mirrors GitHub's own vocabulary so a
+ * comparison of a live repository and of the built-in demo read identically.
+ */
+export type CompareStatus = 'identical' | 'ahead' | 'behind' | 'diverged';
+
+/** What the visitor put on one side of a comparison. */
+export type CompareEndpoint = {
+  /** How it was chosen. A tag still resolves to the commit it points at. */
+  kind: 'commit' | 'tag';
+  /** Tag name when `kind` is `tag`, otherwise null. */
+  tagName: string | null;
+  sha: string;
+  shortSha: string;
+  subject: string;
+  authorName: string;
+  date: string;
+  /** Null for built-in data: there is no real commit to link to. */
+  htmlUrl: string | null;
+};
+
+/**
+ * The net difference between two points, plus the commits that produced it.
+ *
+ * Deliberately the same shape whether it came from GitHub's compare endpoint or
+ * was computed locally for the built-in demo, so the interface never has to know
+ * which one it is looking at.
+ */
+export type RepoCompare = {
+  base: CompareEndpoint;
+  head: CompareEndpoint;
+  status: CompareStatus;
+  /** Commits reachable from head but not from base. */
+  aheadBy: number;
+  /** Commits reachable from base but not from head. */
+  behindBy: number;
+  /** The ahead commits, oldest first. May be shorter than `aheadBy`. */
+  commits: Commit[];
+  /** True when more commits exist than the source would return. */
+  commitsTruncated: boolean;
+  /** Net per-file difference between the two points. */
+  files: FileChange[];
+  filesTruncated: boolean;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  /** The common ancestor, when the source reported one. */
+  mergeBaseSha: string | null;
+  /** Null for built-in data. */
+  htmlUrl: string | null;
+};
+
+/** One side of the side-by-side snapshot summary. */
+export type CompareSnapshot = {
+  sha: string;
+  /** Files present at this point, when a tree was available. */
+  fileCount: number | null;
+  /** Total blob bytes, when the tree reported sizes. */
+  totalBytes: number | null;
+  /** Top-level directories present at this point. */
+  areas: string[];
 };
 
 export type LoadedRange = {

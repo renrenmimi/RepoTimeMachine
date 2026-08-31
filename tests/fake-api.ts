@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ApiError, type GitHubApi, type FetchOptions } from '@/lib/client/api';
 import type { RateLimitSnapshot } from '@/lib/domain/types';
+import { compareLocalHistory } from '@/lib/compare/local';
 import { toCommit, toCommitDetail, toRepoMeta, toRepoTree, toTags } from '@/lib/github/adapter';
 import { fixtureCommitDetail, fixtureTree, type FixtureBundle } from '@/lib/github/fixture-bundle';
 import type { RepoRef } from '@/lib/repo-ref';
@@ -32,7 +33,7 @@ export type FakeApiOptions = {
   tokenConfigured?: boolean;
 };
 
-export type Endpoint = 'repo' | 'commits' | 'commit' | 'tree' | 'tags' | 'probe';
+export type Endpoint = 'repo' | 'commits' | 'commit' | 'tree' | 'tags' | 'probe' | 'compare';
 
 const PER_PAGE = 100;
 
@@ -163,6 +164,44 @@ export class FakeApi implements GitHubApi {
   fetchTags = async (ref: RepoRef, options: FetchOptions = {}) => {
     await this.#enter('tags', ref, undefined, options);
     return { tags: toTags(this.#bundle(ref).tags) };
+  };
+
+  fetchCompare = async (
+    ref: RepoRef,
+    base: string,
+    head: string,
+    labels: { base: string | null; head: string | null } = { base: null, head: null },
+    options: FetchOptions = {},
+  ) => {
+    await this.#enter('compare', ref, `${base}...${head}`, options);
+    const bundle = this.#bundle(ref);
+    const commits = [...bundle.commits].reverse().map((raw, index) => toCommit(raw, index));
+    const compare = compareLocalHistory(
+      {
+        commits,
+        snapshotAt: (sha) => {
+          const raw = fixtureTree(bundle, sha);
+          if (!raw) return null;
+          const out = new Map<string, string>();
+          for (const entry of raw.tree) {
+            if (entry.type === 'blob') out.set(entry.path, entry.sha);
+          }
+          return out;
+        },
+        detailOf: (sha) => {
+          const raw = fixtureCommitDetail(bundle, sha);
+          return raw ? toCommitDetail(raw) : null;
+        },
+        tagOf: (sha) => bundle.tags.find((tag) => tag.commit.sha === sha)?.name ?? null,
+      },
+      base,
+      head,
+    );
+    if (!compare) throw notFound();
+    // Labels are display-only, exactly as the route echoes them.
+    if (labels.base) compare.base = { ...compare.base, kind: 'tag', tagName: labels.base };
+    if (labels.head) compare.head = { ...compare.head, kind: 'tag', tagName: labels.head };
+    return { compare };
   };
 
   fetchProbe = async (ref: RepoRef, branch: string, filePath: string, options: FetchOptions = {}) => {
