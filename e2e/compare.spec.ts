@@ -199,9 +199,49 @@ test.describe('comparison layout', () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test('offers a text alternative for the summary numbers', async ({ page }) => {
+  test('states the relation in words, from head’s point of view', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await compareButton(page).click();
-    await expect(page.getByText(/commits ahead, .* behind, .* files changed/)).toBeAttached();
+    await expect(compareStatus(page)).toHaveText('ahead');
+
+    // The two shas as the cards show them, base first on screen.
+    const shas = await page.locator('[class*="endpoint"] [class*="mono"]').allInnerTexts();
+    const [base, head] = shas;
+
+    // Head is the subject: it is what moved relative to base.
+    const forward = page.getByText(
+      new RegExp(`^${head} is \\d+ commits? ahead of ${base}\\.`),
+    );
+    await expect(forward).toBeAttached();
+
+    await page.getByRole('button', { name: 'Swap the two ends of the comparison' }).click();
+    await expect(compareStatus(page)).toHaveText('behind');
+    await expect(
+      page.getByText(new RegExp(`^${base} is \\d+ commits? behind ${head}\\.`)),
+    ).toBeAttached();
+  });
+
+  test('says two identical points identify the same commit', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await compareButton(page).click();
+    await expect(page.getByText('relation')).toBeVisible();
+
+    await comparePicker(page, 'base').click();
+    await page.getByRole('button', { name: /lock background scrolling/ }).first().click();
+    await expect(compareStatus(page)).toHaveText('identical');
+
+    await expect(page.getByText(/identify the same commit\. No file differs between them\./)).toBeAttached();
+    // The ungrammatical shapes the old template produced.
+    await expect(page.getByText(/is identical of/)).toHaveCount(0);
+    await expect(page.getByText(/is behind of/)).toHaveCount(0);
+  });
+
+  test('appends the file and line totals to the relation', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await compareButton(page).click();
+    await expect(page.getByText('relation')).toBeVisible();
+    await expect(
+      page.getByText(/\d+ files? changed, [\d,]+ lines? added and [\d,]+ removed\./),
+    ).toBeAttached();
   });
 });
