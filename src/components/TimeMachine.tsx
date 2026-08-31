@@ -13,6 +13,8 @@ import { nextSpeed, stepMs } from '@/lib/playback/machine';
 import type { RepoRef } from '@/lib/repo-ref';
 import { buildAppUrl, parseAppUrl } from '@/lib/url/state';
 import { CommitPanel } from './CommitPanel';
+import { ComparePanel } from './ComparePanel';
+import type { PickerChoice } from './ComparePicker';
 import { InsightsPanel } from './InsightsPanel';
 import { RateLimitMeter } from './RateLimitMeter';
 import { RepoInput } from './RepoInput';
@@ -45,7 +47,9 @@ export function TimeMachine() {
     (search: string) => {
       const parsed = parseAppUrl(search);
       if (parsed.repo) {
-        void controller.load(parsed.repo, parsed.commit);
+        void controller.load(parsed.repo, parsed.commit, parsed.compare ?? null);
+        // Back out of a comparison when the entry being restored has none.
+        if (!parsed.compare) controller.closeCompare();
       } else {
         controller.reset();
       }
@@ -62,13 +66,21 @@ export function TimeMachine() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [applyUrl]);
 
-  const writeUrl = useCallback((ref: RepoRef | null, sha: string | null, mode: 'push' | 'replace') => {
-    if (typeof window === 'undefined') return;
-    const next = buildAppUrl({ repo: ref, commit: sha });
-    const current = `${window.location.pathname}${window.location.search}`;
-    if (next === current) return;
-    window.history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', next);
-  }, []);
+  const writeUrl = useCallback(
+    (
+      ref: RepoRef | null,
+      sha: string | null,
+      mode: 'push' | 'replace',
+      compare: { base: string; head: string } | null = null,
+    ) => {
+      if (typeof window === 'undefined') return;
+      const next = buildAppUrl({ repo: ref, commit: sha, compare });
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (next === current) return;
+      window.history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', next);
+    },
+    [],
+  );
 
   const openRepo = useCallback(
     (ref: RepoRef) => {
@@ -90,14 +102,71 @@ export function TimeMachine() {
   // Keep the share URL current. Playback steps replace the entry; deliberate
   // jumps push one, so Back returns to where the visitor jumped from.
   const lastPushedRef = useRef<string | null>(null);
+  const compareOpen = state.compare.open;
+  const compareBase = state.compare.base;
+  const compareHead = state.compare.head;
+
   useEffect(() => {
-    if (!state.ref || !currentCommit) return;
+    if (!state.ref) return;
+
+    // The two views own the address bar in turn, never at the same time.
+    if (compareOpen && compareBase && compareHead) {
+      writeUrl(state.ref, null, 'replace', { base: compareBase, head: compareHead });
+      return;
+    }
+
+    if (!currentCommit) return;
     const mode = lastPushedRef.current === currentCommit.sha ? 'push' : 'replace';
     writeUrl(state.ref, currentCommit.sha, mode);
     lastPushedRef.current = null;
-  }, [state.ref, currentCommit, writeUrl]);
+  }, [state.ref, currentCommit, writeUrl, compareOpen, compareBase, compareHead]);
 
   const dispatch = controller.dispatchPlayback;
+
+  /**
+   * Opens the comparison with a sensible pair already chosen: the commit in view
+   * as head, and the previous release tag — or the start of the loaded range —
+   * as base, which is the comparison people most often want.
+   */
+  const openCompare = useCallback(() => {
+    const head = currentCommit ?? state.commits[state.commits.length - 1];
+    if (!head) return;
+
+    const earlierTags = state.tags
+      .map((tag) => ({ tag, index: state.commits.findIndex((commit) => commit.sha === tag.sha) }))
+      .filter((entry) => entry.index >= 0 && entry.index < head.index)
+      .sort((a, b) => b.index - a.index);
+
+    const base = earlierTags[0]?.tag.sha ?? state.commits[0]?.sha;
+    if (!base || base === head.sha) {
+      // Nothing earlier to compare against; still open, with both ends the same,
+      // so the picker is there to change one.
+      controller.openCompare(head.sha, head.sha);
+      return;
+    }
+    controller.openCompare(base, head.sha, { base: earlierTags[0]?.tag.name ?? null });
+  }, [controller, currentCommit, state.commits, state.tags]);
+
+  const pickCompareEnd = useCallback(
+    (side: 'base' | 'head', choice: PickerChoice) => {
+      controller.setCompareEnd(side, choice.sha, choice.tagName);
+    },
+    [controller],
+  );
+
+  const closeCompare = useCallback(() => {
+    controller.closeCompare();
+    // Hand the address bar back to the timeline.
+    if (state.ref && currentCommit) writeUrl(state.ref, currentCommit.sha, 'push');
+  }, [controller, state.ref, currentCommit, writeUrl]);
+
+  const seekFromCompare = useCallback(
+    (index: number) => {
+      controller.closeCompare();
+      dispatch({ type: 'seek', index });
+    },
+    [controller, dispatch],
+  );
 
   const seek = useCallback(
     (index: number, options: { push?: boolean } = {}) => {
@@ -208,6 +277,19 @@ export function TimeMachine() {
     [controller, playback.index, state.version],
   );
 
+  // Projections at the two ends of a comparison, for the side-by-side column.
+  const compareProjections = useMemo(() => {
+    if (!state.compare.open || !state.compare.data) return { base: null, head: null };
+    const find = (sha: string) => state.commits.find((commit) => commit.sha.startsWith(sha));
+    const base = find(state.compare.data.base.sha);
+    const head = find(state.compare.data.head.sha);
+    return {
+      base: base ? controller.projector.project(base.index) : null,
+      head: head ? controller.projector.project(head.index) : null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller, state.commits, state.compare.open, state.compare.data, state.version]);
+
   const commitMilestones = useMemo(
     () => state.milestones.filter((milestone) => milestone.commitIndex === playback.index),
     [state.milestones, playback.index],
@@ -238,9 +320,11 @@ export function TimeMachine() {
           this one only appears once a repository or the demo is open. */}
       {state.status === 'idle' ? null : (
         <h1 className="visually-hidden">
-          {isBuiltin
-            ? `${BUILTIN_DEMO.title} — built-in demo timeline`
-            : `${state.ref?.slug ?? 'Repository'} — commit timeline`}
+          {state.compare.open
+            ? `${isBuiltin ? BUILTIN_DEMO.title : (state.ref?.slug ?? 'Repository')} — comparing two points`
+            : isBuiltin
+              ? `${BUILTIN_DEMO.title} — built-in demo timeline`
+              : `${state.ref?.slug ?? 'Repository'} — commit timeline`}
         </h1>
       )}
 
@@ -299,6 +383,12 @@ export function TimeMachine() {
           </p>
         )}
         <span className={styles.sourceSpacer} />
+        {showTimeline && !state.compare.open ? (
+          <button type="button" className={styles.sourceButton} onClick={openCompare}>
+            <CompareGlyph />
+            Compare
+          </button>
+        ) : null}
         {isBuiltin ? null : (
           <button type="button" className={styles.sourceButton} onClick={openBuiltinDemo}>
             <BuiltinGlyph />
@@ -344,7 +434,21 @@ export function TimeMachine() {
           <EmptyRepoState slug={state.ref?.slug ?? ''} onClear={clearRepo} />
         ) : null}
 
-        {showTimeline ? (
+        {showTimeline && state.compare.open ? (
+          <ComparePanel
+            compare={state.compare}
+            commits={state.commits}
+            tags={state.tags}
+            baseProjection={compareProjections.base}
+            headProjection={compareProjections.head}
+            onPick={pickCompareEnd}
+            onSwap={controller.swapCompare}
+            onClose={closeCompare}
+            onSeek={seekFromCompare}
+          />
+        ) : null}
+
+        {showTimeline && !state.compare.open ? (
           <div className={styles.grid}>
             <TreePanel
               className={styles.gridTree}
@@ -387,7 +491,7 @@ export function TimeMachine() {
         ) : null}
       </main>
 
-      {showTimeline ? (
+      {showTimeline && !state.compare.open ? (
         <div className={styles.transportSlot}>
           {state.densify.active ? (
             <DensifyBar done={state.densify.done} target={state.densify.target} />
@@ -435,6 +539,15 @@ function DensifyBar({ done, target }: { done: number; target: number }) {
         }}
       />
     </div>
+  );
+}
+
+function CompareGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <rect x="1" y="2.2" width="3.6" height="7.6" rx="1" />
+      <rect x="7.4" y="2.2" width="3.6" height="7.6" rx="1" />
+    </svg>
   );
 }
 

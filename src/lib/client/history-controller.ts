@@ -1,5 +1,13 @@
 import { DedupedCache } from '@/lib/cache/lru';
-import type { Commit, CommitDetail, RateLimitSnapshot, RepoMeta, RepoTree, Tag } from '@/lib/domain/types';
+import type {
+  Commit,
+  CommitDetail,
+  RateLimitSnapshot,
+  RepoCompare,
+  RepoMeta,
+  RepoTree,
+  Tag,
+} from '@/lib/domain/types';
 import { detectMilestones, type Milestone } from '@/lib/milestones/detect';
 import { SIGNATURES } from '@/lib/milestones/signatures';
 import {
@@ -59,8 +67,39 @@ export type HistoryState = {
    * that changes the range. There is no window where the two disagree.
    */
   playback: PlaybackState;
+  /**
+   * The side-by-side comparison, when the visitor has opened one. A separate
+   * view rather than a panel: it answers "what is different between these two
+   * points", which is a different question from "what did this commit do".
+   */
+  compare: CompareState;
   /** Non-fatal problems worth telling the visitor about. */
   notices: string[];
+};
+
+export type CompareState = {
+  /** True while the compare view is open, even before the data arrives. */
+  open: boolean;
+  /** Shas the visitor picked, as requested. */
+  base: string | null;
+  head: string | null;
+  /** Tag names, when an end was chosen by tag rather than by commit. */
+  baseLabel: string | null;
+  headLabel: string | null;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  data: RepoCompare | null;
+  error: ApiErrorInfo | null;
+};
+
+const EMPTY_COMPARE: CompareState = {
+  open: false,
+  base: null,
+  head: null,
+  baseLabel: null,
+  headLabel: null,
+  status: 'idle',
+  data: null,
+  error: null,
 };
 
 export type ControllerOptions = {
@@ -107,6 +146,7 @@ function initialState(): HistoryState {
     growth: null,
     activity: null,
     playback: initialPlaybackState(),
+    compare: EMPTY_COMPARE,
     notices: [],
   };
 }
@@ -141,6 +181,7 @@ export class HistoryController {
   /** Trees GitHub refused; retrying them inside one session only wastes quota. */
   #failedTrees = new Set<string>();
   #treeCache = new DedupedCache<RepoTree>(64);
+  #compareCache = new DedupedCache<RepoCompare>(24);
   #detailCache = new DedupedCache<CommitDetail>(600);
 
   /** Sha the visitor asked for through the URL, before commits have arrived. */
@@ -250,6 +291,7 @@ export class HistoryController {
     this.#priority = [];
     this.#selectedSha = null;
     this.#requestedSha = null;
+    this.#compareCache.clear();
     this.#densifying = false;
     this.#recomputeHandle?.();
     this.#recomputeHandle = null;
@@ -261,9 +303,15 @@ export class HistoryController {
    * Loads a repository. `requestedSha` comes from a shared URL and selects that
    * commit once the range containing it has arrived.
    */
-  async load(ref: RepoRef, requestedSha: string | null = null): Promise<void> {
+  async load(
+    ref: RepoRef,
+    requestedSha: string | null = null,
+    requestedCompare: { base: string; head: string } | null = null,
+  ): Promise<void> {
     if (this.#state.ref?.slug === ref.slug && this.#state.status === 'ready') {
-      if (requestedSha) this.selectSha(requestedSha);
+      // Already open: honour whichever view the caller asked for.
+      if (requestedCompare) this.openCompare(requestedCompare.base, requestedCompare.head);
+      else if (requestedSha) this.selectSha(requestedSha);
       return;
     }
 
@@ -295,6 +343,8 @@ export class HistoryController {
       // Metadata milestones (initial commit, merges, breaking-change markers)
       // need no further requests, so they are available immediately.
       this.#scheduleDerived();
+      // A shared comparison link opens straight into that view.
+      if (requestedCompare) this.openCompare(requestedCompare.base, requestedCompare.head);
       void this.#loadSupporting(generation, ref, repo.meta.defaultBranch);
     } catch (error) {
       if (isAbort(error) || this.#isStale(generation)) return;
@@ -676,6 +726,90 @@ export class HistoryController {
         if (isAbort(error) || this.#isStale(generation)) return;
         // A failed probe only costs precision, so it is not surfaced.
       }
+    }
+  }
+
+  // --------------------------------------------------------------- compare ---
+
+  /**
+   * Opens the side-by-side comparison for two points.
+   *
+   * Both ends may be abbreviated shas, which is what a shared link carries. Tag
+   * names are resolved to shas by the caller, and passed on only as labels, so
+   * nothing but validated hex reaches the request.
+   */
+  openCompare = (
+    base: string,
+    head: string,
+    labels: { base?: string | null; head?: string | null } = {},
+  ): void => {
+    this.#patch({
+      compare: {
+        open: true,
+        base,
+        head,
+        baseLabel: labels.base ?? null,
+        headLabel: labels.head ?? null,
+        status: 'loading',
+        data: null,
+        error: null,
+      },
+    });
+    void this.#loadCompare(this.#generation, base, head);
+  };
+
+  /** Replaces one end, keeping the other. */
+  setCompareEnd = (side: 'base' | 'head', sha: string, label: string | null = null): void => {
+    const current = this.#state.compare;
+    const next = {
+      base: side === 'base' ? sha : current.base,
+      head: side === 'head' ? sha : current.head,
+      baseLabel: side === 'base' ? label : current.baseLabel,
+      headLabel: side === 'head' ? label : current.headLabel,
+    };
+    if (!next.base || !next.head) return;
+    this.openCompare(next.base, next.head, { base: next.baseLabel, head: next.headLabel });
+  };
+
+  /** Swaps the two ends, which is how a visitor reads the difference backwards. */
+  swapCompare = (): void => {
+    const { base, head, baseLabel, headLabel } = this.#state.compare;
+    if (!base || !head) return;
+    this.openCompare(head, base, { base: headLabel, head: baseLabel });
+  };
+
+  closeCompare = (): void => {
+    if (!this.#state.compare.open) return;
+    this.#patch({ compare: EMPTY_COMPARE });
+  };
+
+  async #loadCompare(generation: number, base: string, head: string): Promise<void> {
+    const ref = this.#state.ref;
+    if (!ref) return;
+
+    try {
+      const labels = { base: this.#state.compare.baseLabel, head: this.#state.compare.headLabel };
+      const compare = await this.#compareCache.load(
+        `${ref.slug}:${base}...${head}:${labels.base ?? ''}:${labels.head ?? ''}`,
+        async () => {
+          const payload = await this.#api.fetchCompare(ref, base, head, labels, this.#fetchOptions());
+          return payload.compare;
+        },
+      );
+      if (this.#isStale(generation)) return;
+      // A later pick may already have superseded this one.
+      const current = this.#state.compare;
+      if (!current.open || current.base !== base || current.head !== head) return;
+      this.#patch({ compare: { ...current, status: 'ready', data: compare, error: null } });
+    } catch (error) {
+      if (isAbort(error) || this.#isStale(generation)) return;
+      const current = this.#state.compare;
+      if (!current.open || current.base !== base || current.head !== head) return;
+      const info: ApiErrorInfo =
+        error instanceof ApiError
+          ? error.info
+          : { code: 'unknown', message: 'That comparison could not be loaded.', retryAt: null };
+      this.#patch({ compare: { ...current, status: 'error', data: null, error: info } });
     }
   }
 
