@@ -13,6 +13,10 @@ Either way, the tool reconstructs the file tree at each commit and lets you scru
 or play through the history while the tree fills in, files change, and the commit
 detail follows along.
 
+![The built-in demo playing: working tree, commit detail, growth chart and the scrubbable timeline](docs/timeline.jpg)
+
+*The built-in demo at its final commit — the working tree on the left, the commit and its diff in the middle, growth and file-type mix on the right, and the scrubbable timeline along the bottom. The badge in the corner reads `0 GitHub requests`, because this history ships with the app.*
+
 It answers questions that are awkward to answer on GitHub itself:
 
 - what existed at the beginning;
