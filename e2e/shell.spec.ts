@@ -566,6 +566,45 @@ test.describe('layout', () => {
     await expect(trigger).toBeFocused();
   });
 
+  /*
+   * 200% browser zoom on a 1440x900 screen leaves about 720x450 CSS pixels, and
+   * 320% leaves about 640x400. Nothing may be cut off or become unreachable at
+   * either — which is what makes zoom a usable accommodation rather than a
+   * different, worse application.
+   */
+  for (const size of [
+    { width: 720, height: 450, zoom: '200%' },
+    { width: 640, height: 400, zoom: '320%' },
+  ]) {
+    test(`stays usable at the equivalent of ${size.zoom} zoom`, async ({ page }) => {
+      await page.setViewportSize({ width: size.width, height: size.height });
+      await openRepo(page, REPOS.demo);
+      await page.waitForTimeout(900);
+
+      // The commit, the player and the way into the history are all still there.
+      await expect(page.locator('#replay-position')).toBeVisible();
+      await expect(commitSubject(page)).toBeVisible();
+      await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: /^History/ })).toBeVisible();
+      await expect(viewTab(page, 'Compare')).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+
+      await subTab(page, 'Changes').click();
+      await page.locator('[class*="fileButton"]').first().click();
+      await expectNoHorizontalOverflow(page);
+
+      await viewTab(page, 'Compare').click();
+      await page.waitForTimeout(1400);
+      await expectNoHorizontalOverflow(page);
+
+      // The statistics table is the one thing allowed its own sideways scroll,
+      // and it must take it without dragging the document with it.
+      await page.getByRole('tab', { name: 'Repository stats' }).click();
+      await expect(page.getByRole('rowheader', { name: 'Files tracked' })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    });
+  }
+
   test('reports no console errors while browsing a repository', async ({ page }) => {
     const problems = collectProblems(page);
     await openRepo(page, REPOS.demo);
