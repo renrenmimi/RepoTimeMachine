@@ -7,6 +7,7 @@ import {
   demoButton,
   expectNoForeignGitHubLinks,
   expectNoHorizontalOverflow,
+  expectNoPageScroll,
   landingInput,
   landingLoadButton,
   liveBadge,
@@ -649,6 +650,86 @@ test.describe('layout', () => {
       await expectNoHorizontalOverflow(page);
     });
   }
+
+  /*
+   * A regression guard for a bug that reached production: playing the demo grew
+   * the document by a few hundred pixels, so the whole application could be
+   * scrolled up off the screen to reveal blank page underneath. The cause was
+   * the `visually-hidden` labels the tree emits per row — absolutely positioned
+   * at their static position, and not clipped by the shell because the shell was
+   * not itself a containing block. It grew as playback filled the tree, which is
+   * why stepping made it worse.
+   */
+  test('the page itself never scrolls while the demo plays', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRepo(page, REPOS.demo);
+    await expectNoPageScroll(page, 'on arrival');
+
+    await transport(page).play.click();
+    for (let i = 0; i < 12; i += 1) {
+      await page.waitForTimeout(500);
+      await expectNoPageScroll(page, `during playback, tick ${i + 1}`);
+    }
+    await transport(page).pause.click();
+
+    // The tree at the end of the history is the tallest it gets.
+    await transport(page).latest.click();
+    await page.waitForTimeout(900);
+    await expectNoPageScroll(page, 'at the latest commit');
+
+    // And a real wheel event over the right-hand edge moves nothing.
+    await page.mouse.move(1428, 450);
+    await page.mouse.wheel(0, 2000);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.scrollY), 'the wheel must not move the page').toBe(0);
+  });
+
+  test('the page does not scroll in any view, at any desktop size', async ({ page }) => {
+    for (const size of [
+      { width: 1440, height: 900 },
+      { width: 1280, height: 720 },
+      { width: 1024, height: 768 },
+    ]) {
+      await page.setViewportSize(size);
+      await openRepo(page, REPOS.demo);
+      await page.getByRole('slider', { name: /Commit position/ }).fill('14');
+      await page.waitForTimeout(900);
+      const at = `${size.width}x${size.height}`;
+      await expectNoPageScroll(page, `${at} replay`);
+
+      await subTab(page, 'Changes').click();
+      await page.locator('[class*="fileButton"]').first().click();
+      await page.waitForTimeout(500);
+      await expectNoPageScroll(page, `${at} an open diff`);
+
+      await viewTab(page, 'Compare').click();
+      await page.waitForTimeout(1600);
+      await expectNoPageScroll(page, `${at} compare`);
+
+      await viewTab(page, 'Insights').click();
+      await page.waitForTimeout(1000);
+      await expectNoPageScroll(page, `${at} insights`);
+    }
+  });
+
+  test('a short or narrow window still scrolls, because it has to', async ({ page }) => {
+    // The pinned frame is deliberately given up below 900px wide or 620px tall:
+    // forcing an application into a viewport it does not fit is worse than
+    // letting the page scroll. The fix above must not have taken that away.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openRepo(page, REPOS.demo);
+    await page.waitForTimeout(600);
+
+    const room = await page.evaluate(
+      () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    );
+    expect(room, 'the narrow layout is taller than the window').toBeGreaterThan(0);
+
+    await page.mouse.move(195, 400);
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  });
 
   test('reports no console errors while browsing a repository', async ({ page }) => {
     const problems = collectProblems(page);
