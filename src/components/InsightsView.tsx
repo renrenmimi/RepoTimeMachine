@@ -7,6 +7,7 @@ import type { Milestone } from '@/lib/milestones/detect';
 import type { ActivityMap, GrowthSeries } from '@/lib/stats/growth';
 import { estimateLanguages } from '@/lib/stats/growth';
 import type { Projection } from '@/lib/tree/projector';
+import { BUILTIN_DEMO } from '@/lib/demos';
 import { formatDate, formatNumber } from '@/lib/format';
 import { describeLoadedRange } from '@/lib/range';
 import { ActivityGrid, GrowthChart, LanguageBar } from './Charts';
@@ -40,6 +41,7 @@ type Props = {
  */
 export function InsightsView(props: Props) {
   const {
+    meta,
     commits,
     currentIndex,
     projection,
@@ -63,6 +65,8 @@ export function InsightsView(props: Props) {
   return (
     <div className={styles.view}>
       <div className={styles.inner}>
+        {meta ? <RepositoryFacts meta={meta} totalCommits={totalCommits} /> : null}
+
         <section className={styles.scope} aria-labelledby="insights-scope">
           <h2 className={styles.scopeTitle} id="insights-scope">
             {describeLoadedRange(commits.length, totalCommits)}
@@ -176,6 +180,85 @@ export function InsightsView(props: Props) {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * What the source says about the repository itself.
+ *
+ * Distinct from everything below it: these come from the repository's own
+ * metadata rather than from the loaded range, so they are stated first and kept
+ * apart from the figures that only describe the window.
+ */
+function RepositoryFacts({ meta, totalCommits }: { meta: RepoMeta; totalCommits: number | null }) {
+  const builtin = meta.dataSource === 'builtin';
+
+  return (
+    <section className={styles.about} aria-labelledby="insights-about">
+      {/* Named for what the block is: the repository's own name is in the H1
+          directly above, and repeating it would be a heading repeated. */}
+      <h2 className={styles.aboutTitle} id="insights-about">
+        About this repository
+      </h2>
+
+      {meta.description ? <p className={styles.aboutText}>{meta.description}</p> : null}
+
+      {/* The default branch is not repeated here: the source line under the
+          repository's name already states which branch is being read. */}
+      <dl className={styles.aboutFacts}>
+        <div>
+          <dt>Commits on the default branch</dt>
+          {/* Unknown when GitHub's pagination header did not say, never 0. */}
+          <dd className="tabular">{totalCommits === null ? 'Unknown' : formatNumber(totalCommits)}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{formatDate(meta.createdAt)}</dd>
+        </div>
+        <div>
+          <dt>Last push</dt>
+          <dd>{formatDate(meta.pushedAt)}</dd>
+        </div>
+        {builtin ? null : (
+          <>
+            <div>
+              <dt>Stars</dt>
+              <dd className="tabular">{formatNumber(meta.stars)}</dd>
+            </div>
+            <div>
+              <dt>Forks</dt>
+              <dd className="tabular">{formatNumber(meta.forks)}</dd>
+            </div>
+          </>
+        )}
+        <div>
+          <dt>Licence</dt>
+          <dd>{meta.license ?? 'None declared'}</dd>
+        </div>
+        <div>
+          <dt>Primary language</dt>
+          {/* GitHub's own guess, and labelled as GitHub's rather than ours. */}
+          <dd>{meta.primaryLanguage ? `${meta.primaryLanguage} (per GitHub)` : 'Not reported'}</dd>
+        </div>
+      </dl>
+
+      {meta.isArchived || meta.isFork ? (
+        <p className={styles.aboutFlags}>
+          {[meta.isArchived ? 'Archived' : null, meta.isFork ? 'A fork' : null].filter(Boolean).join(' · ')}
+        </p>
+      ) : null}
+
+      {/* No link is rendered when there is no repository to open. */}
+      {meta.htmlUrl ? (
+        <p className={styles.aboutText}>
+          <a href={meta.htmlUrl} target="_blank" rel="noreferrer noopener">
+            Open {meta.slug} on GitHub
+          </a>
+        </p>
+      ) : (
+        <p className={styles.aboutText}>{BUILTIN_DEMO.disclosure}</p>
+      )}
+    </section>
   );
 }
 

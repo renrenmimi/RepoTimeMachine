@@ -249,6 +249,35 @@ test.describe('insights', () => {
     await expect(page.getByRole('heading', { name: 'Where work happened' })).toBeVisible();
   });
 
+  test('states what the source says about the repository itself', async ({ page }) => {
+    await openRepo(page, REPOS.medium);
+    await viewTab(page, 'Insights').click();
+
+    // Repository metadata, kept apart from the figures about the loaded window,
+    // and named for what it is — the repository's name is already the H1.
+    await expect(page.getByRole('heading', { name: 'About this repository' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('rtm-fixtures/sample-app');
+    // The branch is stated once, in the source line, and not repeated here.
+    await expect(page.getByText('Commits on the default branch')).toBeVisible();
+    await expect(page.getByText('Stars')).toBeVisible();
+    await expect(page.getByText('Licence')).toBeVisible();
+    // GitHub's guess, labelled as GitHub's.
+    await expect(page.getByText(/per GitHub/)).toBeVisible();
+    // And the only way to the real repository.
+    await expect(page.getByRole('link', { name: /Open rtm-fixtures\/sample-app on GitHub/ })).toBeVisible();
+  });
+
+  test('offers no repository link for built-in data, and says why', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await viewTab(page, 'Insights').click();
+
+    await expect(page.getByRole('heading', { name: 'About this repository' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /on GitHub/ })).toHaveCount(0);
+    await expect(page.getByText(/curated, synthetic history/).first()).toBeVisible();
+    // Star and fork counts are meaningless for invented data, so they are absent.
+    await expect(page.getByText('Stars')).toHaveCount(0);
+  });
+
   test('offers a text alternative for the growth chart', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await viewTab(page, 'Insights').click();
