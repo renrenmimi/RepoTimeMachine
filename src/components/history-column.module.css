@@ -83,11 +83,11 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: 0;
   width: 100%;
   min-width: 0;
   padding: 0 var(--space-3);
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
   text-align: left;
   transition: background-color var(--duration) var(--ease-out);
 }
@@ -96,28 +96,39 @@
   background: var(--bg-hover);
 }
 
+/* Clear without shouting: a filled row, a solid edge, and a heavier subject. */
 .item[data-active] {
   background: var(--bg-selected);
-  border-left-color: var(--focus-ring);
+  border-left-color: var(--text-accent);
 }
 
+/*
+ * Two lines, clamped. The box is a fixed 40px whether the subject needs one line
+ * or two, which is what keeps every row the same height as the virtualiser
+ * assumes — and what stops the meta row shifting up and down the list.
+ */
 .itemSubject {
   min-width: 0;
+  height: 40px;
   font-size: var(--text-md);
   font-weight: 500;
   line-height: 20px;
   color: var(--text-primary);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .item[data-active] .itemSubject {
   font-weight: 600;
 }
 
+/* number · date · sha · marker, on a grid so the columns hold their positions. */
 .itemMeta {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.25ch auto 1fr auto;
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
@@ -127,35 +138,36 @@
 }
 
 .itemIndex {
-  flex-shrink: 0;
-  min-width: 2ch;
+  text-align: right;
   color: var(--text-muted);
 }
 
 .itemDate {
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
 .itemSha {
-  flex-shrink: 0;
   font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.itemMark {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .itemTag {
   composes: badge from './controls.module.css';
-  flex-shrink: 0;
-  margin-left: auto;
-  max-width: 10ch;
+  max-width: 11ch;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   background: var(--info-bg);
   color: var(--info-text);
 }
 
 .itemFlag {
-  flex-shrink: 0;
-  margin-left: auto;
   font-size: var(--text-xs);
   line-height: 18px;
   color: var(--text-secondary);

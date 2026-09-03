@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileChange } from '@/lib/domain/types';
 import { formatNumber, splitPath } from '@/lib/format';
+import { toSideBySide } from '@/lib/diff/unified';
+import { classifyPath, kindLabel } from '@/lib/tree/classify';
+import { useMediaQuery } from './hooks';
 import styles from './file-changes.module.css';
 
 /**
@@ -35,7 +38,22 @@ type Props = {
   focus?: { path: string } | null;
   /** Called when a diff is opened, so playback can stop before it is read. */
   onOpenPatch?: () => void;
+  /**
+   * Which diff is open, when the caller wants to own that.
+   *
+   * The replay does, because this component unmounts when the visitor looks at
+   * `Compare` and a diff they had open should still be open when they come back.
+   * The key is carried with the path so a stale one reads as nothing open,
+   * exactly as the internal state does.
+   */
+  opened?: OpenedDiff | null;
+  onOpened?: (opened: OpenedDiff | null) => void;
 };
+
+export type DiffLayout = 'unified' | 'split';
+
+/** An open diff, tagged with the commit or comparison it belongs to. */
+export type OpenedDiff = { key: string; path: string };
 
 export function FileChangeList({
   files,
@@ -44,10 +62,23 @@ export function FileChangeList({
   resetKey = '',
   focus = null,
   onOpenPatch,
+  opened: controlledOpened,
+  onOpened,
 }: Props) {
+  /*
+   * Unified is the default and the only option on a narrow screen: two columns
+   * of code in 390px is one unreadable column twice. The choice is remembered
+   * for the session, because somebody who prefers one prefers it for all of them.
+   */
+  const wide = useMediaQuery('(min-width: 1280px)');
+  const [preferred, setPreferred] = useState<DiffLayout>('unified');
+  const layout: DiffLayout = wide ? preferred : 'unified';
   // Both bits of view state are keyed by `resetKey`, so moving to another commit
   // or comparison collapses them without an effect to reset anything.
-  const [opened, setOpened] = useState<{ key: string; path: string } | null>(null);
+  const [ownOpened, setOwnOpened] = useState<OpenedDiff | null>(null);
+  const controlled = onOpened !== undefined;
+  const opened = controlled ? (controlledOpened ?? null) : ownOpened;
+  const setOpened = controlled ? onOpened : setOwnOpened;
   const [expanded, setExpanded] = useState<{ key: string; limit: number } | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -102,9 +133,31 @@ export function FileChangeList({
         </p>
       ) : null}
 
+      {wide ? (
+        <div className={styles.layoutBar} role="group" aria-label="Diff layout">
+          {(['unified', 'split'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={styles.layoutOption}
+              aria-pressed={layout === option}
+              onClick={() => setPreferred(option)}
+            >
+              {option === 'unified' ? 'Unified' : 'Side by side'}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <ul className={styles.fileList} ref={listRef}>
         {shown.map((file) => (
-          <FileRow key={file.path} file={file} open={openPath === file.path} onToggle={toggle} />
+          <FileRow
+            key={file.path}
+            file={file}
+            open={openPath === file.path}
+            layout={layout}
+            onToggle={toggle}
+          />
         ))}
       </ul>
 
@@ -129,9 +182,20 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, '\\$&');
 }
 
-function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; onToggle: (path: string) => void }) {
+function FileRow({
+  file,
+  open,
+  layout,
+  onToggle,
+}: {
+  file: FileChange;
+  open: boolean;
+  layout: DiffLayout;
+  onToggle: (path: string) => void;
+}) {
   const { dir, name } = splitPath(file.path);
   const panelId = `patch-${file.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const kind = kindLabel(classifyPath(file.path).kind);
 
   return (
     <li className={styles.fileItem} data-status={file.status} data-path={file.path}>
@@ -150,6 +214,12 @@ function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; on
           <span className={styles.fileDir}>{dir}</span>
           <span className={styles.fileName}>{name}</span>
         </span>
+        {/*
+         * Said before the row is opened, so nothing looks readable and then
+         * turns out not to be. The label comes from the path, exactly as the
+         * file tree's does, so the two always agree.
+         */}
+        {kind ? <span className={styles.fileKind}>{kind}</span> : null}
         <span className={styles.fileStatusWord}>{statusWord(file.status)}</span>
         <span className={styles.fileNumbers}>
           {file.additions > 0 ? <span className={`${styles.plus} tabular`}>+{formatNumber(file.additions)}</span> : null}
@@ -169,7 +239,9 @@ function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; on
       ) : null}
 
       <div id={panelId} hidden={!open}>
-        {open ? file.patch !== null ? <Patch file={file} /> : <PatchFallback file={file} /> : null}
+        {open ? (
+          file.patch !== null ? <Patch file={file} layout={layout} /> : <PatchFallback file={file} />
+        ) : null}
       </div>
     </li>
   );
@@ -213,30 +285,35 @@ export function statusWord(status: FileChange['status']): string {
  * Every line is a React text node, so patch content from an arbitrary public
  * repository can never become markup.
  */
-function Patch({ file }: { file: FileChange }) {
+function Patch({ file, layout }: { file: FileChange; layout: DiffLayout }) {
   const [full, setFull] = useState(false);
   const lines = useMemo(() => (file.patch ?? '').split('\n'), [file.patch]);
   const shown = lines.slice(0, MAX_PATCH_LINES);
   const tall = shown.length > PATCH_VIEWPORT_LINES;
+  const capped = useMemo(() => shown.join('\n'), [shown]);
 
   return (
     <div className={styles.patch}>
-      {/* Only this box scrolls sideways; the page never does. */}
-      <pre
-        className={styles.patchPre}
-        data-full={full || undefined}
-        tabIndex={0}
-        aria-label={`Diff for ${file.path}`}
-      >
-        <code>
-          {shown.map((line, index) => (
-            <span key={index} className={styles.patchLine} data-kind={lineKind(line)}>
-              {line === '' ? ' ' : line}
-              {'\n'}
-            </span>
-          ))}
-        </code>
-      </pre>
+      {layout === 'split' ? (
+        <SplitPatch patch={capped} path={file.path} full={full} />
+      ) : (
+        /* Only this box scrolls sideways; the page never does. */
+        <pre
+          className={styles.patchPre}
+          data-full={full || undefined}
+          tabIndex={0}
+          aria-label={`Diff for ${file.path}`}
+        >
+          <code>
+            {shown.map((line, index) => (
+              <span key={index} className={styles.patchLine} data-kind={lineKind(line)}>
+                {line === '' ? ' ' : line}
+                {'\n'}
+              </span>
+            ))}
+          </code>
+        </pre>
+      )}
 
       {tall ? (
         <button type="button" className={styles.patchToggle} onClick={() => setFull((value) => !value)}>
@@ -273,19 +350,21 @@ function Patch({ file }: { file: FileChange }) {
  * Each reason is a different fact about the source, so none of them is allowed
  * to collapse into "no changes" — which is the one thing they all are not.
  */
+/**
+ * What is here instead of a diff, and why.
+ *
+ * Each reason is a different fact, so each gets its own sentence. The generic
+ * one is last on purpose: for a live repository "the source did not send one" is
+ * the truth, but for anything the application ships itself it would only mean
+ * the fixture was unfinished, which is why the built-in demo never reaches it.
+ */
 function PatchFallback({ file }: { file: FileChange }) {
-  const reason =
-    file.patchOmittedReason === 'binary'
-      ? 'GitHub does not provide a text diff for this file: it is binary, or its content did not change.'
-      : file.patchOmittedReason === 'too-large'
-        ? 'GitHub omitted the diff for this file because it is too large.'
-        : file.patchOmittedReason === 'aggregated'
-          ? 'This file changed more than once between the two points, and this source cannot produce a single net diff for it. The line counts above are the totals across those changes, not the size of the net difference.'
-          : 'This source did not provide a diff for this file. That is not the same as the file being unchanged.';
+  const detail = fallbackDetail(file);
 
   return (
-    <div className={styles.patchFallback} data-tone="warning">
-      <p>{reason}</p>
+    <div className={styles.patchFallback} data-tone={detail.tone}>
+      <p className={styles.patchFallbackTitle}>{detail.title}</p>
+      <p>{detail.body}</p>
       {file.blobUrl ? (
         <a href={file.blobUrl} target="_blank" rel="noreferrer noopener">
           View this file on GitHub
@@ -293,6 +372,62 @@ function PatchFallback({ file }: { file: FileChange }) {
       ) : null}
     </div>
   );
+}
+
+type Fallback = { tone: 'info' | 'warning'; title: string; body: string };
+
+function fallbackDetail(file: FileChange): Fallback {
+  switch (file.patchOmittedReason) {
+    case 'generated':
+      return {
+        // Not a caveat: withholding a lockfile diff is the right call, and the
+        // row said `generated` before it was opened.
+        tone: 'info',
+        title: 'Generated file — diff deliberately not shown',
+        body:
+          'This file is machine-written output. Its diff would be hundreds of lines of resolved ' +
+          'versions and would say nothing about how the history grew, so the content is not ' +
+          'carried. The line counts beside the path are the size this file is declared to be, ' +
+          'not a count taken from a diff.',
+      };
+    case 'binary':
+      return {
+        tone: 'info',
+        title: 'Binary file — no text diff exists',
+        body:
+          'There is no line-based diff for a binary file. The row is marked binary before it is ' +
+          'opened for that reason.',
+      };
+    case 'rename-only':
+      return {
+        tone: 'info',
+        title: 'Moved, with no change to its content',
+        body: `The file moved from ${file.previousPath ?? 'another path'} and its content is byte-for-byte identical, so an empty diff is the complete answer rather than a missing one.`,
+      };
+    case 'too-large':
+      return {
+        tone: 'warning',
+        title: 'Diff omitted by GitHub',
+        body: 'GitHub declined to produce a diff for this file because it is too large.',
+      };
+    case 'aggregated':
+      return {
+        tone: 'warning',
+        title: 'Changed more than once in this range',
+        body:
+          'This file was touched by several of the commits between the two points, and this ' +
+          'source cannot produce a single net diff for it. The line counts above are the totals ' +
+          'across those changes, not the size of the net difference.',
+      };
+    default:
+      return {
+        tone: 'warning',
+        title: 'No diff was provided',
+        body:
+          'The source did not send a diff for this file. That is not the same as the file being ' +
+          'unchanged — it changed, and what changed is not available here.',
+      };
+  }
 }
 
 function lineKind(line: string): 'add' | 'del' | 'hunk' | 'meta' | 'ctx' {
@@ -315,5 +450,79 @@ function ChevronIcon({ open }: { open: boolean }) {
     >
       <path d="M1.5 3 5 6.5 8.5 3z" />
     </svg>
+  );
+}
+
+/**
+ * The same hunks, in two columns.
+ *
+ * Rendered from `toSideBySide`, which pairs a replaced line onto one row so the
+ * before and after sit next to each other. Every cell is a text node, exactly
+ * as the unified view: patch content from an arbitrary repository can never
+ * become markup, whichever layout is showing it.
+ */
+function SplitPatch({ patch, path, full }: { patch: string; path: string; full: boolean }) {
+  const rows = useMemo(() => toSideBySide(patch), [patch]);
+
+  return (
+    <div
+      className={styles.split}
+      data-full={full || undefined}
+      tabIndex={0}
+      role="group"
+      aria-label={`Diff for ${path}, side by side`}
+    >
+      <table className={styles.splitTable}>
+        <caption className="visually-hidden">
+          {`Side-by-side diff for ${path}. The left column is the file before this change, the right column after it.`}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" colSpan={2}>
+              Before
+            </th>
+            <th scope="col" colSpan={2}>
+              After
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            if (row.kind === 'hunk') {
+              return (
+                <tr key={index} className={styles.splitHunk}>
+                  <td colSpan={4}>{row.text}</td>
+                </tr>
+              );
+            }
+
+            if (row.kind === 'context') {
+              return (
+                <tr key={index}>
+                  <td className={styles.splitNumber}>{row.oldNumber}</td>
+                  <td className={styles.splitCode}>{row.text === '' ? ' ' : row.text}</td>
+                  <td className={styles.splitNumber}>{row.newNumber}</td>
+                  <td className={styles.splitCode}>{row.text === '' ? ' ' : row.text}</td>
+                </tr>
+              );
+            }
+
+            return (
+              <tr key={index}>
+                <td className={styles.splitNumber}>{row.oldNumber ?? ''}</td>
+                <td className={styles.splitCode} data-kind={row.removed === null ? 'empty' : 'del'}>
+                  {/* The sign is kept, so the colour is never the only signal. */}
+                  {row.removed === null ? '' : `−${row.removed}`}
+                </td>
+                <td className={styles.splitNumber}>{row.newNumber ?? ''}</td>
+                <td className={styles.splitCode} data-kind={row.added === null ? 'empty' : 'add'}>
+                  {row.added === null ? '' : `+${row.added}`}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

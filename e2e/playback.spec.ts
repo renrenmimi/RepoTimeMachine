@@ -150,6 +150,86 @@ test.describe('pausing to read', () => {
     expect(await currentIndex(page)).toBe(at);
   });
 
+  test('returning to the replay finds everything the visitor chose', async ({ page }) => {
+    /*
+     * The replay unmounts on a view change, so anything it held locally was
+     * gone on the way back: the sub-view reset to Repository, the path filter
+     * emptied, folders the visitor had opened closed again.
+     */
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('7');
+    await page.waitForTimeout(700);
+
+    // Open a folder, filter the tree, then switch to the diff.
+    await page.getByLabel('Filter file paths in the tree').fill('lib');
+    await page.waitForTimeout(300);
+    await subTab(page, 'Changes').click();
+    const firstFile = await page.locator('[class*="fileItem"]').first().getAttribute('data-path');
+
+    await viewTab(page, 'Insights').click();
+    await page.waitForTimeout(900);
+    await viewTab(page, 'Compare').click();
+    await page.waitForTimeout(1400);
+    await viewTab(page, 'Replay').click();
+    await page.waitForTimeout(600);
+
+    // The commit, the sub-view and the filter all survived.
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('7');
+    await expect(subTab(page, 'Changes')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[class*="fileItem"]').first()).toHaveAttribute('data-path', firstFile!);
+
+    await subTab(page, 'Repository').click();
+    await expect(page.getByLabel('Filter file paths in the tree')).toHaveValue('lib');
+  });
+
+  test('an open diff is still open on the way back', async ({ page }) => {
+    /*
+     * The diff you were reading is the most specific thing you chose, and
+     * collapsing it costs a scroll and a click to get back to — and moves the
+     * list under you, which undoes the scroll position the other state
+     * preserves.
+     */
+    await openRepo(page, REPOS.demo);
+    await subTab(page, 'Changes').click();
+    await page.locator('[class*="fileButton"]').first().click();
+    const path = await page.locator('[class*="fileItem"]').first().getAttribute('data-path');
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+
+    await viewTab(page, 'Insights').click();
+    await page.waitForTimeout(700);
+    await viewTab(page, 'Compare').click();
+    await page.waitForTimeout(1400);
+    await viewTab(page, 'Replay').click();
+
+    await expect(subTab(page, 'Changes')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+  });
+
+  test('a different commit collapses it, because its files are different', async ({ page }) => {
+    // Keyed by commit, so the open diff belongs to the commit it was opened on
+    // rather than following the playhead onto a file that may not be there.
+    await openRepo(page, REPOS.demo);
+    await subTab(page, 'Changes').click();
+    await page.locator('[class*="fileButton"]').first().click();
+    const path = await page.locator('[class*="fileItem"]').first().getAttribute('data-path');
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+
+    await transport(page).next.click();
+    await page.waitForTimeout(900);
+    await expect(page.getByLabel(`Diff for ${path}`)).toHaveCount(0);
+  });
+
+  test('a different repository starts with a clean tree', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await page.getByLabel('Filter file paths in the tree').fill('lib');
+    await subTab(page, 'Changes').click();
+
+    await openRepo(page, REPOS.tiny);
+    // Another repository has another tree, so none of that carries over.
+    await expect(subTab(page, 'Repository')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('Filter file paths in the tree')).toHaveValue('');
+  });
+
   test('leaving the replay stops the clock and keeps the place', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await transport(page).slider.fill('6');

@@ -75,19 +75,37 @@
   color: var(--text-primary);
 }
 
+/* Fixed width, so `added` and `modified` occupy the same column down the list. */
 .fileStatusWord {
-  flex-shrink: 0;
+  flex: 0 0 5.5rem;
+  text-align: right;
   font-size: var(--text-xs);
   line-height: 18px;
   color: var(--text-secondary);
 }
 
+/*
+ * `generated` / `binary` / `test`, from the path — the same label the tree uses.
+ * It sits with the path rather than between the status and the numbers, so it
+ * cannot push those columns out of line.
+ */
+.fileKind {
+  composes: badge from './controls.module.css';
+  flex-shrink: 0;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+/*
+ * Also fixed, and right-aligned, so a row with only additions lines its numbers
+ * up with a row that has both.
+ */
 .fileNumbers {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  flex-shrink: 0;
-  min-width: 7ch;
+  flex: 0 0 9.5rem;
   justify-content: flex-end;
 }
 
@@ -139,6 +157,41 @@
   font-weight: 400;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- diff layout */
+
+.layoutBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: var(--space-3) var(--space-4) 0;
+  padding: 2px;
+  align-self: flex-start;
+  width: fit-content;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.layoutOption {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: 6px;
+  font-size: var(--text-xs);
+  line-height: 18px;
+  color: var(--text-secondary);
+  transition: background-color var(--duration) var(--ease-out), color var(--duration) var(--ease-out);
+}
+
+.layoutOption:hover {
+  color: var(--text-primary);
+}
+
+.layoutOption[aria-pressed='true'] {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* -------------------------------------------------------------------- patch */
@@ -210,6 +263,106 @@
 .patchFallback {
   composes: statusNote from './controls.module.css';
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
   margin: 0 var(--space-4) var(--space-4);
+}
+
+.patchFallbackTitle {
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- side by side */
+
+/*
+ * Two columns, offered only above 1280px. Scrolls inside its own box, exactly
+ * as the unified view does, so a long line never moves the page.
+ */
+.split {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--code-bg);
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  max-height: 400px;
+}
+
+.split[data-full] {
+  max-height: none;
+}
+
+.split:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.splitTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  tab-size: 2;
+}
+
+.splitTable thead th {
+  position: sticky;
+  top: 0;
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+/* A rule down the middle, so the two sides are unmistakably two sides. */
+.splitTable thead th:nth-child(2),
+.splitCode:nth-child(2) {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.splitNumber {
+  width: 1%;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 20px;
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.splitCode {
+  width: 49%;
+  padding: 0 var(--space-2);
+  color: var(--code-text);
+  white-space: pre;
+  vertical-align: top;
+}
+
+.splitCode[data-kind='add'] {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-text);
+}
+
+.splitCode[data-kind='del'] {
+  background: var(--diff-remove-bg);
+  color: var(--diff-remove-text);
+}
+
+/* An absent side is empty, not zero-width, so the rows stay aligned. */
+.splitCode[data-kind='empty'] {
+  background: var(--bg-subtle);
+}
+
+.splitHunk td {
+  padding: var(--space-1) var(--space-3);
+  background: var(--diff-hunk-bg);
+  color: var(--diff-hunk-text);
+  font-size: var(--text-xs);
+  line-height: 18px;
 }

@@ -10,6 +10,7 @@ import type {
   TreeEntry,
 } from '@/lib/domain/types';
 import type { RepoRef } from '@/lib/repo-ref';
+import { diffText } from '@/lib/diff/unified';
 import {
   BUILTIN_DEMO_AUTHOR,
   BUILTIN_DEMO_BRANCH,
@@ -21,7 +22,6 @@ import {
   DEMO_CREATED_AT,
   DEMO_PUSHED_AT,
   DEMO_TAGS,
-  type DemoChange,
 } from './learning-platform';
 
 /**
@@ -70,7 +70,7 @@ export const BUILTIN_DEMO_REF: RepoRef = {
 
 // ---------------------------------------------------------------- helpers ---
 
-/** Deterministic 32-bit hash, so sizes and blob ids are stable across runs. */
+/** Deterministic 32-bit hash, so ids are stable across runs and processes. */
 function hash32(seed: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < seed.length; i += 1) {
@@ -89,12 +89,28 @@ function hexId(seed: string): string {
   return out.slice(0, 40);
 }
 
-/** A plausible starting size for a path, before any edits. */
-function baseSize(path: string): number {
-  return 180 + (hash32(path) % 5200);
+/** UTF-8 byte length, which is what a file size means. */
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
 }
 
-type BlobState = { size: number; revision: number };
+/**
+ * One file as the demo holds it at one commit.
+ *
+ * `text` is null for the two files whose content is deliberately not shipped;
+ * their size is declared by the fixture instead, and the interface says so.
+ */
+type FileState = {
+  text: string | null;
+  size: number;
+  /**
+   * Blob id. Derived from the content for a text file, so two commits holding
+   * the same bytes get the same id and a comparison between them correctly
+   * reports no change. Declared files fall back to a revision counter.
+   */
+  blobSha: string;
+  declaredLines: number | null;
+};
 
 // ------------------------------------------------------------------ build ---
 
@@ -105,40 +121,41 @@ type BuiltDemo = {
   details: Map<string, CommitDetail>;
   trees: Map<string, RepoTree>;
   tags: Tag[];
+  /** Content at every commit, so a comparison can diff two arbitrary points. */
+  contents: Map<string, Map<string, FileState>>;
 };
 
-function toFileChange(change: DemoChange): FileChange {
+function textState(text: string): FileState {
   return {
-    path: change.path,
-    previousPath: change.from ?? null,
-    status: change.kind,
-    additions: change.additions,
-    deletions: change.deletions,
-    patch: change.patch ?? null,
-    // A change with no recorded diff says so, exactly as the GitHub path does.
-    patchOmittedReason: change.patch ? null : 'not-provided',
-    patchTruncated: false,
-    blobUrl: null,
+    text,
+    size: byteLength(text),
+    // Content-addressed, exactly as Git is: the id follows the bytes.
+    blobSha: hexId(`content:${text}`),
+    declaredLines: null,
   };
 }
 
-function treeFrom(commitSha: string, blobs: ReadonlyMap<string, BlobState>): RepoTree {
+function declaredState(path: string, lines: number, bytes: number, revision: number): FileState {
+  return {
+    text: null,
+    size: bytes,
+    blobSha: hexId(`declared:${path}:${revision}`),
+    declaredLines: lines,
+  };
+}
+
+function treeFrom(commitSha: string, files: ReadonlyMap<string, FileState>): RepoTree {
   const entries: TreeEntry[] = [];
   const directories = new Set<string>();
 
-  for (const [path, state] of blobs) {
+  for (const [path, state] of files) {
     const segments = path.split('/');
     for (let i = 1; i < segments.length; i += 1) directories.add(segments.slice(0, i).join('/'));
-    entries.push({
-      path,
-      type: 'blob',
-      size: state.size,
-      sha: hexId(`blob:${path}:${state.revision}`),
-    });
+    entries.push({ path, type: 'blob', size: state.size, sha: state.blobSha });
   }
 
   for (const directory of directories) {
-    entries.push({ path: directory, type: 'tree', size: null, sha: hexId(`tree:${directory}`), });
+    entries.push({ path: directory, type: 'tree', size: null, sha: hexId(`tree:${directory}`) });
   }
 
   entries.sort((a, b) => a.path.localeCompare(b.path, 'en'));
@@ -147,51 +164,129 @@ function treeFrom(commitSha: string, blobs: ReadonlyMap<string, BlobState>): Rep
 
 /**
  * Replays the fixture into the same domain objects the GitHub adapter produces,
- * so every downstream module — projector, statistics, milestones, panels — runs
- * unchanged. The tree is materialised at every commit, so no position is ever an
- * approximation.
+ * so every downstream module — projector, statistics, milestones, panels,
+ * comparison — runs unchanged.
+ *
+ * Every number a file reports is computed here from its content: the patch by
+ * diffing the previous revision against the new one, the line counts from that
+ * patch, the size from the bytes, and the blob id from the bytes. A hand-written
+ * count cannot drift from a hand-written hunk, because neither is written by hand.
+ *
+ * The tree is materialised at every commit, so no position is ever an
+ * approximation and no comparison has to be reconstructed from diffs.
  */
 function build(): BuiltDemo {
   const commits: Commit[] = [];
   const details = new Map<string, CommitDetail>();
   const trees = new Map<string, RepoTree>();
-  const blobs = new Map<string, BlobState>();
+  const contents = new Map<string, Map<string, FileState>>();
+  const files = new Map<string, FileState>();
+  /** Revision counter per declared path, so its id changes when it changes. */
+  const revisions = new Map<string, number>();
 
   DEMO_COMMITS.forEach((spec, index) => {
-    for (const change of spec.changes) {
-      switch (change.kind) {
-        case 'added': {
-          blobs.set(change.path, {
-            size: baseSize(change.path) + change.additions * 6,
-            revision: 1,
+    const changes: FileChange[] = [];
+
+    for (const op of spec.files) {
+      switch (op.op) {
+        case 'add':
+        case 'mod': {
+          const before = files.get(op.path)?.text ?? '';
+          const diff = diffText(before, op.text);
+          files.set(op.path, textState(op.text));
+          changes.push({
+            path: op.path,
+            previousPath: null,
+            status: op.op === 'add' ? 'added' : 'modified',
+            additions: diff.additions,
+            deletions: diff.deletions,
+            patch: diff.patch,
+            patchOmittedReason: null,
+            patchTruncated: false,
+            blobUrl: null,
           });
           break;
         }
-        case 'removed': {
-          blobs.delete(change.path);
-          break;
-        }
-        case 'renamed': {
-          const previous = change.from ? blobs.get(change.from) : undefined;
-          if (change.from) blobs.delete(change.from);
-          blobs.set(change.path, {
-            size: Math.max(40, (previous?.size ?? baseSize(change.path)) + (change.additions - change.deletions) * 6),
-            revision: (previous?.revision ?? 0) + 1,
+
+        case 'ren': {
+          const previous = files.get(op.from);
+          const before = previous?.text ?? '';
+          const after = op.text ?? before;
+          files.delete(op.from);
+          files.set(op.path, textState(after));
+          const diff = diffText(before, after);
+          changes.push({
+            path: op.path,
+            previousPath: op.from,
+            status: 'renamed',
+            additions: diff.additions,
+            deletions: diff.deletions,
+            // A pure rename has an empty diff, which is a fact about the change
+            // rather than a missing patch, so it says so explicitly.
+            patch: diff.patch === '' ? null : diff.patch,
+            patchOmittedReason: diff.patch === '' ? 'rename-only' : null,
+            patchTruncated: false,
+            blobUrl: null,
           });
           break;
         }
-        default: {
-          const current = blobs.get(change.path);
-          blobs.set(change.path, {
-            size: Math.max(40, (current?.size ?? baseSize(change.path)) + (change.additions - change.deletions) * 6),
-            revision: (current?.revision ?? 0) + 1,
+
+        case 'del': {
+          const previous = files.get(op.path);
+          files.delete(op.path);
+          const diff = diffText(previous?.text ?? '', '');
+          changes.push({
+            path: op.path,
+            previousPath: null,
+            status: 'removed',
+            additions: diff.additions,
+            deletions: diff.deletions,
+            patch: previous?.text === null ? null : diff.patch,
+            patchOmittedReason: previous?.text === null ? 'generated' : null,
+            patchTruncated: false,
+            blobUrl: null,
+          });
+          break;
+        }
+
+        case 'opaque': {
+          const revision = (revisions.get(op.path) ?? 0) + 1;
+          revisions.set(op.path, revision);
+          files.set(op.path, declaredState(op.path, op.lines, op.bytes, revision));
+          changes.push({
+            path: op.path,
+            previousPath: null,
+            status: 'added',
+            additions: op.lines,
+            deletions: 0,
+            patch: null,
+            patchOmittedReason: op.reason,
+            patchTruncated: false,
+            blobUrl: null,
+          });
+          break;
+        }
+
+        case 'opaqueMod': {
+          const revision = (revisions.get(op.path) ?? 0) + 1;
+          revisions.set(op.path, revision);
+          files.set(op.path, declaredState(op.path, op.lines, op.bytes, revision));
+          changes.push({
+            path: op.path,
+            previousPath: null,
+            status: 'modified',
+            additions: op.added,
+            deletions: op.removed,
+            patch: null,
+            patchOmittedReason: 'generated',
+            patchTruncated: false,
+            blobUrl: null,
           });
           break;
         }
       }
     }
 
-    const files = spec.changes.map(toFileChange);
     commits.push({
       sha: spec.sha,
       shortSha: spec.sha.slice(0, 7),
@@ -211,14 +306,15 @@ function build(): BuiltDemo {
 
     details.set(spec.sha, {
       sha: spec.sha,
-      additions: files.reduce((sum, file) => sum + file.additions, 0),
-      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
-      changedFiles: files.length,
-      files,
+      additions: changes.reduce((sum, file) => sum + file.additions, 0),
+      deletions: changes.reduce((sum, file) => sum + file.deletions, 0),
+      changedFiles: changes.length,
+      files: changes,
       filesTruncated: false,
     });
 
-    trees.set(spec.sha, treeFrom(spec.sha, blobs));
+    trees.set(spec.sha, treeFrom(spec.sha, files));
+    contents.set(spec.sha, new Map(files));
   });
 
   const meta: RepoMeta = {
@@ -234,7 +330,7 @@ function build(): BuiltDemo {
     primaryLanguage: 'TypeScript',
     stars: 0,
     forks: 0,
-    sizeKb: Math.round([...blobs.values()].reduce((sum, blob) => sum + blob.size, 0) / 1024),
+    sizeKb: Math.round([...files.values()].reduce((sum, file) => sum + file.size, 0) / 1024),
     license: 'MIT',
     topics: [],
     isArchived: false,
@@ -247,7 +343,7 @@ function build(): BuiltDemo {
     sha: DEMO_COMMITS[tag.commitIndex]!.sha,
   }));
 
-  return { meta, commits, details, trees, tags };
+  return { meta, commits, details, trees, tags, contents };
 }
 
 let cached: BuiltDemo | null = null;
@@ -294,7 +390,10 @@ export function builtinTags(): Tag[] {
 /** The oldest commit that touched a path, for the milestone path probes. */
 export function builtinFirstCommitForPath(path: string): string | null {
   for (const spec of DEMO_COMMITS) {
-    if (spec.changes.some((change) => change.path === path || change.from === path)) return spec.sha;
+    const touched = spec.files.some(
+      (op) => op.path === path || (op.op === 'ren' && op.from === path),
+    );
+    if (touched) return spec.sha;
   }
   return null;
 }
@@ -320,6 +419,14 @@ export function builtinCompare(baseSha: string, headSha: string): RepoCompare | 
       snapshotAt: (sha) => blobMap(built.trees.get(sha)),
       detailOf: (sha) => built.details.get(sha) ?? null,
       tagOf: (sha) => built.tags.find((tag) => tag.sha === sha)?.name ?? null,
+      // The demo holds every file at every commit, so the net difference between
+      // any two points is computed from the content rather than reassembled.
+      contentAt: (sha, path) => {
+        const at = built.contents.get(sha);
+        if (!at) return undefined;
+        const state = at.get(path);
+        return state ? state.text : undefined;
+      },
     },
     baseSha,
     headSha,

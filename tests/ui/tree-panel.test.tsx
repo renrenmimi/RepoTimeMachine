@@ -1,10 +1,11 @@
 /**
  * @vitest-environment jsdom
  */
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TreePanel } from '@/components/TreePanel';
+import { EMPTY_TREE_VIEW, TreePanel, type TreeViewState } from '@/components/TreePanel';
 import type { Projection } from '@/lib/tree/projector';
 import type { ChangeMap, FileSet } from '@/lib/tree/build';
 import { commits, detail, fileChange, sha } from '../factories';
@@ -31,6 +32,16 @@ function projection(
   };
 }
 
+/**
+ * The tree's filter, expansion and selection are controlled by the shell in the
+ * real application, so that they survive a view change. The harness holds them
+ * here for the same reason the shell does.
+ */
+function TreeHarness(props: Omit<Parameters<typeof TreePanel>[0], 'view' | 'onView'>) {
+  const [view, setView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
+  return <TreePanel {...props} view={view} onView={setView} />;
+}
+
 const treeProps = {
   commits: range,
   currentIndex: 3,
@@ -44,7 +55,7 @@ const treeProps = {
 describe('TreePanel', () => {
   it('shows top-level folders open and the file count', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([
           ['src/app/page.tsx', 100],
@@ -61,7 +72,7 @@ describe('TreePanel', () => {
   });
 
   it('expands and collapses a folder on click', async () => {
-    render(<TreePanel {...treeProps} projection={projection([['src/app/page.tsx', 100]])} />);
+    render(<TreeHarness {...treeProps} projection={projection([['src/app/page.tsx', 100]])} />);
     await userEvent.click(screen.getByRole('button', { name: /app/ }));
     expect(screen.getByText('page.tsx')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /app/ }));
@@ -73,7 +84,7 @@ describe('TreePanel', () => {
       ['src/deep/nested/changed.ts', { status: 'added', previousPath: null, additions: 3, deletions: 0 }],
     ]);
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['src/deep/nested/changed.ts', 10], ['src/other/quiet.ts', 10]], changes)}
       />,
@@ -89,7 +100,7 @@ describe('TreePanel', () => {
       ['c.ts', { status: 'renamed', previousPath: 'old.ts', additions: 0, deletions: 0 }],
     ]);
     const { container } = render(
-      <TreePanel {...treeProps} projection={projection([['a.ts', 1], ['b.ts', 1], ['c.ts', 1]], changes)} />,
+      <TreeHarness {...treeProps} projection={projection([['a.ts', 1], ['b.ts', 1], ['c.ts', 1]], changes)} />,
     );
     expect(container.querySelectorAll('[data-status="added"]').length).toBeGreaterThan(0);
     expect(container.querySelectorAll('[data-status="modified"]').length).toBeGreaterThan(0);
@@ -103,7 +114,7 @@ describe('TreePanel', () => {
       ['gone.ts', { status: 'removed', previousPath: null, additions: 0, deletions: 12 }],
     ]);
     const { container } = render(
-      <TreePanel {...treeProps} projection={projection([['stays.ts', 1]], changes, ['gone.ts'])} />,
+      <TreeHarness {...treeProps} projection={projection([['stays.ts', 1]], changes, ['gone.ts'])} />,
     );
     expect(screen.getByText('gone.ts')).toBeInTheDocument();
     expect(container.querySelector('[data-status="removed"]')).not.toBeNull();
@@ -114,7 +125,7 @@ describe('TreePanel', () => {
 
   it('labels binary and generated files', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['logo.png', 900], ['package-lock.json', 4000], ['src.ts', 10]])}
       />,
@@ -124,7 +135,7 @@ describe('TreePanel', () => {
   });
 
   it('filters paths and shows a message when nothing matches', async () => {
-    render(<TreePanel {...treeProps} projection={projection([['src/app/page.tsx', 1], ['README.md', 1]])} />);
+    render(<TreeHarness {...treeProps} projection={projection([['src/app/page.tsx', 1], ['README.md', 1]])} />);
     const filter = screen.getByLabelText('Filter file paths in the tree');
 
     await userEvent.type(filter, 'page');
@@ -141,14 +152,14 @@ describe('TreePanel', () => {
   });
 
   it('says the tree was read here when it came from a snapshot at this commit', () => {
-    render(<TreePanel {...treeProps} projection={projection([['a.ts', 1]])} />);
+    render(<TreeHarness {...treeProps} projection={projection([['a.ts', 1]])} />);
     expect(screen.getByText('Snapshot')).toBeInTheDocument();
     expect(screen.getByText(/read at this exact commit/)).toBeInTheDocument();
   });
 
   it('reports a rebuilt tree differently, and says there are no gaps', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['a.ts', 1]], new Map(), [], { fidelity: 'derived', sourceIndex: 1 })}
       />,
@@ -159,7 +170,7 @@ describe('TreePanel', () => {
 
   it('says how many diffs are missing when the tree is only approximate', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['a.ts', 1]], new Map(), [], {
           fidelity: 'partial',
@@ -176,7 +187,7 @@ describe('TreePanel', () => {
 
   it('says a truncated snapshot is missing paths', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['a.ts', 1]], new Map(), [], { sourceTruncated: true })}
       />,
@@ -186,7 +197,7 @@ describe('TreePanel', () => {
 
   it('says nothing has been read when no tree is available at all', () => {
     render(
-      <TreePanel {...treeProps} projection={projection([], new Map(), [], { sourceIndex: -1 })} />,
+      <TreeHarness {...treeProps} projection={projection([], new Map(), [], { sourceIndex: -1 })} />,
     );
     expect(screen.getByText('No snapshot')).toBeInTheDocument();
   });
@@ -197,7 +208,7 @@ describe('TreePanel', () => {
       [target.sha, detail(target.sha, [fileChange({ path: 'src/a.ts', additions: 9, deletions: 4 })])],
     ]);
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         details={details}
         projection={projection([['src/a.ts', 100]])}
@@ -212,7 +223,7 @@ describe('TreePanel', () => {
   });
 
   it('says so when no change to the selected file is known', async () => {
-    render(<TreePanel {...treeProps} projection={projection([['a.ts', 100]])} />);
+    render(<TreeHarness {...treeProps} projection={projection([['a.ts', 100]])} />);
     await userEvent.click(screen.getByRole('button', { name: /a\.ts/ }));
     expect(screen.getByText(/No change found in the 0 commit diffs/)).toBeInTheDocument();
   });
@@ -220,14 +231,14 @@ describe('TreePanel', () => {
   it('renders a hostile file name as text', () => {
     // No slash: a real `/` would legitimately split into a directory.
     const hostile = '<img src=x onerror=alert(1)>.ts';
-    const { container } = render(<TreePanel {...treeProps} projection={projection([[hostile, 1]])} />);
+    const { container } = render(<TreeHarness {...treeProps} projection={projection([[hostile, 1]])} />);
     expect(container.textContent).toContain(hostile);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
   });
 
   it('handles a point in history with no files yet', () => {
-    render(<TreePanel {...treeProps} projection={projection([])} />);
+    render(<TreeHarness {...treeProps} projection={projection([])} />);
     expect(screen.getByText('No files at this point in the history')).toBeInTheDocument();
     expect(screen.getByText('0 files')).toBeInTheDocument();
   });
@@ -242,7 +253,7 @@ describe('TreePanel opening a diff', () => {
   it('offers a diff on a file this commit touched', async () => {
     const onOpenDiff = vi.fn();
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         onOpenDiff={onOpenDiff}
         projection={projection([['src/changed.ts', 10], ['src/quiet.ts', 10]], changes)}
@@ -255,7 +266,7 @@ describe('TreePanel opening a diff', () => {
 
   it('offers no diff on a file this commit did not touch', () => {
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         projection={projection([['src/changed.ts', 10], ['src/quiet.ts', 10]], changes)}
       />,
@@ -267,7 +278,7 @@ describe('TreePanel opening a diff', () => {
   it('offers the diff from the inspector too, for a changed file', async () => {
     const onOpenDiff = vi.fn();
     render(
-      <TreePanel
+      <TreeHarness
         {...treeProps}
         onOpenDiff={onOpenDiff}
         projection={projection([['src/changed.ts', 10]], changes)}
@@ -281,7 +292,7 @@ describe('TreePanel opening a diff', () => {
   });
 
   it('reports an unknown size as unknown, not as zero', async () => {
-    render(<TreePanel {...treeProps} projection={projection([['a.ts', null]])} />);
+    render(<TreeHarness {...treeProps} projection={projection([['a.ts', null]])} />);
     await userEvent.click(screen.getByRole('button', { name: /a\.ts/ }));
     expect(screen.getByText('Unknown here')).toBeInTheDocument();
   });

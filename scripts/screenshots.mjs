@@ -124,7 +124,13 @@ const shots = [
     },
   },
   { name: '14-live-repository', width: 1440, height: 900, path: '/?repo=rtm-fixtures%2Fsample-app' },
-  { name: '15-error-rate-limited', width: 1440, height: 900, path: '/?repo=rtm-fixtures%2Frate-limited' },
+  {
+    name: '15-error-rate-limited',
+    width: 1440,
+    height: 900,
+    path: '/?repo=rtm-fixtures%2Frate-limited',
+    expectStatus: 429,
+  },
   { name: '16-home-390', width: 390, height: 844, path: '/' },
   { name: '17-replay-390', width: 390, height: 844, path: demo() },
   {
@@ -166,7 +172,12 @@ async function main() {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
-      if (message.type() === 'error') errors.push(message.text());
+      if (message.type() !== 'error') return;
+      // A shot of a failure state provokes the failure, and the browser logs the
+      // non-2xx response it was asked to make. Only that one line is expected;
+      // anything else on the same page is still reported.
+      if (shot.expectStatus && message.text().includes(`status of ${shot.expectStatus}`)) return;
+      errors.push(message.text());
     });
 
     await page.goto(`${BASE}${shot.path}`, { waitUntil: 'domcontentloaded' });

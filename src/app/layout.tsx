@@ -38,8 +38,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Both themes are first-class, so the browser chrome follows the one in use.
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f7f5' },
-    { media: '(prefers-color-scheme: dark)', color: '#111714' },
+    { media: '(prefers-color-scheme: light)', color: '#f7f8f5' },
+    { media: '(prefers-color-scheme: dark)', color: '#101411' },
   ],
   colorScheme: 'light dark',
   width: 'device-width',

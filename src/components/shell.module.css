@@ -17,9 +17,9 @@
 /* -------------------------------------------------------- workspace heading */
 
 /*
- * The chrome above the content: a 56px bar, a title row and the view tabs.
- * Together about 148px, which is the budget — the rest of the window belongs
- * to the repository.
+ * The chrome above the content: a 56px bar, the repository's name, a quiet row
+ * of source metadata, and the view tabs. Around 172px, and the rest of the
+ * window belongs to the repository.
  */
 .workspaceHead {
   flex-shrink: 0;
@@ -31,10 +31,15 @@
 .titleRow {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-4);
   min-width: 0;
-  padding: var(--space-2) 0 6px;
+  padding: var(--space-3) 0 0;
+}
+
+/* A quiet row of its own: source, cost and the synthetic-history disclosure. */
+.sourceRow {
+  min-width: 0;
+  padding: 2px 0 var(--space-2);
 }
 
 .title {

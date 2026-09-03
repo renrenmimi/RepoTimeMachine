@@ -43,6 +43,8 @@ export function Landing({ onOpenDemo, onSelect, onOpenHelp, busy }: LandingProps
             <h2 className={styles.entryTitle} id="demo-entry-title">
               Start with the demo
             </h2>
+            {/* What you are about to look at, in the same words the demo itself uses. */}
+            <p className={styles.demoLede}>{BUILTIN_DEMO.description}</p>
             <button type="button" className={styles.demoAction} onClick={onOpenDemo} disabled={busy}>
               <BuiltinGlyph />
               Explore the demo
@@ -50,10 +52,9 @@ export function Landing({ onOpenDemo, onSelect, onOpenHelp, busy }: LandingProps
             <p className={styles.demoCost}>
               {BUILTIN_DEMO.commitCount} synthetic commits &middot; 0 GitHub requests
             </p>
-            {/* Said plainly, on the first screen: this history is invented. */}
+            {/* One accurate sentence. The cost is on the line above it. */}
             <p className={styles.demoDisclosure}>
-              Synthetic data written for this application — not anybody&rsquo;s repository, and it makes no request to
-              GitHub.
+              Invented data, written for this application — not anybody&rsquo;s repository.
             </p>
           </section>
 
@@ -284,7 +285,15 @@ function headingFor(code: ApiErrorInfo['code']): string {
   }
 }
 
-export function EmptyRepoState({ slug, onClear }: { slug: string; onClear: () => void }) {
+export function EmptyRepoState({
+  slug,
+  onClear,
+  onOpenDemo,
+}: {
+  slug: string;
+  onClear: () => void;
+  onOpenDemo: () => void;
+}) {
   return (
     <div className={styles.state}>
       <div className={styles.stateInner}>
@@ -296,6 +305,10 @@ export function EmptyRepoState({ slug, onClear }: { slug: string; onClear: () =>
         <div className={styles.stateActions}>
           <button type="button" className={styles.statePrimary} onClick={onClear}>
             Change repository
+          </button>
+          {/* Somebody who came to look at a history should be offered one. */}
+          <button type="button" className={styles.stateSecondary} onClick={onOpenDemo}>
+            Explore the built-in demo
           </button>
         </div>
       </div>

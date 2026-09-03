@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChangesPanel } from '@/components/ChangesPanel';
+import type { OpenedDiff } from '@/components/FileChangeList';
 import { commits, detail, fileChange } from '../factories';
 
 const range = commits(5);
@@ -17,10 +19,22 @@ const base = {
   onOpenPatch: vi.fn(),
 };
 
+/**
+ * The shell, as far as this panel can tell.
+ *
+ * Which diff is open is held above `ChangesPanel` in the real application, so
+ * that a diff stays open across a view change. The tests have to hold it too,
+ * or nothing would ever open.
+ */
+function Panel(props: Omit<Parameters<typeof ChangesPanel>[0], 'opened' | 'onOpened'>) {
+  const [opened, setOpened] = useState<OpenedDiff | null>(null);
+  return <ChangesPanel {...props} opened={opened} onOpened={setOpened} />;
+}
+
 describe('ChangesPanel file list', () => {
   it('lists changed files with their line counts', () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'src/app/page.tsx', status: 'added', additions: 42, deletions: 0 }),
@@ -35,7 +49,7 @@ describe('ChangesPanel file list', () => {
 
   it('states each status in words as well as in colour', () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'a.ts', status: 'added' }),
@@ -53,7 +67,7 @@ describe('ChangesPanel file list', () => {
 
   it('shows where a renamed file came from, on its own line', () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'src/new.ts', previousPath: 'src/old.ts', status: 'renamed' }),
@@ -66,7 +80,7 @@ describe('ChangesPanel file list', () => {
 
   it('pages through a very long file list instead of rendering it all', async () => {
     const files = Array.from({ length: 150 }, (_, i) => fileChange({ path: `dir/f${i}.ts` }));
-    render(<ChangesPanel {...base} detail={detail(target.sha, files)} />);
+    render(<Panel {...base} detail={detail(target.sha, files)} />);
 
     expect(screen.queryByText('f149.ts')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Show \d+ more files/ }));
@@ -75,14 +89,14 @@ describe('ChangesPanel file list', () => {
 
   it('says how much of the list is on screen', () => {
     const files = Array.from({ length: 150 }, (_, i) => fileChange({ path: `dir/f${i}.ts` }));
-    render(<ChangesPanel {...base} detail={detail(target.sha, files)} />);
+    render(<Panel {...base} detail={detail(target.sha, files)} />);
     expect(screen.getByText('60 of 150 shown')).toBeInTheDocument();
   });
 
   it('warns that GitHub caps the file list at 300', () => {
     const files = Array.from({ length: 300 }, (_, i) => fileChange({ path: `f${i}.ts` }));
     render(
-      <ChangesPanel {...base} detail={{ ...detail(target.sha, files), filesTruncated: true }} />,
+      <Panel {...base} detail={{ ...detail(target.sha, files), filesTruncated: true }} />,
     );
     expect(screen.getByText(/at most 300 files per commit/)).toBeInTheDocument();
   });
@@ -92,7 +106,7 @@ describe('ChangesPanel patches', () => {
   it('expands a patch on demand and marks the lines by symbol as well as colour', async () => {
     const patch = '@@ -1,2 +1,3 @@\n context\n-removed line\n+added line';
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [fileChange({ path: 'a.ts', patch, additions: 1, deletions: 1 })])}
       />,
@@ -113,7 +127,7 @@ describe('ChangesPanel patches', () => {
   it('pauses playback when a diff is opened, so the evidence stops moving', async () => {
     const onOpenPatch = vi.fn();
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         onOpenPatch={onOpenPatch}
         detail={detail(target.sha, [fileChange({ path: 'a.ts', patch: '@@ -1 +1 @@\n+x' })])}
@@ -126,7 +140,7 @@ describe('ChangesPanel patches', () => {
   it('renders hostile patch content as text', async () => {
     const patch = '@@ -1 +1 @@\n+<script>alert(1)</script>';
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [fileChange({ path: 'x.html', patch, additions: 1 })])}
       />,
@@ -139,7 +153,7 @@ describe('ChangesPanel patches', () => {
   it('renders a hostile file path as text', () => {
     const hostile = '<img src=x onerror=alert(1)>.ts';
     const { container } = render(
-      <ChangesPanel {...base} detail={detail(target.sha, [fileChange({ path: hostile })])} />,
+      <Panel {...base} detail={detail(target.sha, [fileChange({ path: hostile })])} />,
     );
     expect(container.textContent).toContain(hostile);
     expect(container.querySelector('img')).toBeNull();
@@ -147,7 +161,7 @@ describe('ChangesPanel patches', () => {
 
   it('offers to expand a long diff rather than scrolling it silently', async () => {
     const patch = ['@@ -1,40 +1,40 @@', ...Array.from({ length: 40 }, (_, i) => `+line ${i}`)].join('\n');
-    render(<ChangesPanel {...base} detail={detail(target.sha, [fileChange({ path: 'long.ts', patch })])} />);
+    render(<Panel {...base} detail={detail(target.sha, [fileChange({ path: 'long.ts', patch })])} />);
     await userEvent.click(screen.getByRole('button', { name: /long\.ts/ }));
     await userEvent.click(screen.getByRole('button', { name: /Expand all 41 lines/ }));
     expect(screen.getByRole('button', { name: /Collapse this diff/ })).toBeInTheDocument();
@@ -155,7 +169,7 @@ describe('ChangesPanel patches', () => {
 
   it('caps an enormous diff and says how much it is showing', async () => {
     const patch = ['@@ -1,400 +1,400 @@', ...Array.from({ length: 400 }, (_, i) => `+line ${i}`)].join('\n');
-    render(<ChangesPanel {...base} detail={detail(target.sha, [fileChange({ path: 'huge.ts', patch })])} />);
+    render(<Panel {...base} detail={detail(target.sha, [fileChange({ path: 'huge.ts', patch })])} />);
     await userEvent.click(screen.getByRole('button', { name: /huge\.ts/ }));
     expect(screen.getByText(/Showing the first 320 of 401 diff lines/)).toBeInTheDocument();
   });
@@ -164,7 +178,7 @@ describe('ChangesPanel patches', () => {
 describe('ChangesPanel missing patches', () => {
   it('explains a binary file instead of showing a blank diff', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({
@@ -180,13 +194,14 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /logo\.png/ }));
-    expect(screen.getByText(/does not provide a text diff/)).toBeInTheDocument();
+    expect(screen.getByText('Binary file — no text diff exists')).toBeInTheDocument();
+    expect(screen.getByText(/no line-based diff for a binary file/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View this file on GitHub/ })).toBeInTheDocument();
   });
 
   it('explains an oversized diff', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'huge.json', patch: null, patchOmittedReason: 'too-large', additions: 90_000 }),
@@ -194,12 +209,13 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /huge\.json/ }));
+    expect(screen.getByText('Diff omitted by GitHub')).toBeInTheDocument();
     expect(screen.getByText(/too large/)).toBeInTheDocument();
   });
 
   it('says a missing patch is not the same as no change', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'mystery.ts', patch: null, patchOmittedReason: 'not-provided' }),
@@ -207,12 +223,13 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /mystery\.ts/ }));
-    expect(screen.getByText(/not the same as the file being unchanged/)).toBeInTheDocument();
+    expect(screen.getByText('No diff was provided')).toBeInTheDocument();
+    expect(screen.getByText(/not the same as the file being/)).toBeInTheDocument();
   });
 
   it('says an aggregated total is a total, not a net diff', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({
@@ -226,14 +243,15 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /app\.ts/ }));
-    const text = screen.getByText(/changed more than once/);
+    expect(screen.getByText('Changed more than once in this range')).toBeInTheDocument();
+    const text = screen.getByText(/cannot produce a single net diff/);
     expect(text).toHaveTextContent(/totals across those changes/);
     expect(text).toHaveTextContent(/not the size of the net difference/);
   });
 
   it('offers no GitHub link when the source has no object to link to', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'demo.ts', patch: null, patchOmittedReason: 'binary', blobUrl: null }),
@@ -244,9 +262,57 @@ describe('ChangesPanel missing patches', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
+  it('says a generated file is withheld on purpose, not missing', async () => {
+    render(
+      <Panel
+        {...base}
+        detail={detail(target.sha, [
+          fileChange({
+            path: 'package-lock.json',
+            status: 'added',
+            patch: null,
+            patchOmittedReason: 'generated',
+            additions: 1840,
+          }),
+        ])}
+      />,
+    );
+
+    // Marked before it is opened, from the path, exactly as the tree marks it.
+    expect(screen.getByText('generated')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /package-lock\.json/ }));
+    expect(screen.getByText('Generated file — diff deliberately not shown')).toBeInTheDocument();
+    // And it says the count is declared rather than taken from a diff.
+    expect(screen.getByText(/declared to be, not a count taken from a diff/)).toBeInTheDocument();
+  });
+
+  it('says a pure rename is complete, not missing', async () => {
+    render(
+      <Panel
+        {...base}
+        detail={detail(target.sha, [
+          fileChange({
+            path: 'components/library/library-card.tsx',
+            previousPath: 'components/library/lesson-card.tsx',
+            status: 'renamed',
+            patch: null,
+            patchOmittedReason: 'rename-only',
+            additions: 0,
+            deletions: 0,
+          }),
+        ])}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /library-card\.tsx/ }));
+    expect(screen.getByText('Moved, with no change to its content')).toBeInTheDocument();
+    expect(screen.getByText(/byte-for-byte identical/)).toBeInTheDocument();
+  });
+
   it('says when a patch was cut short', async () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         detail={detail(target.sha, [
           fileChange({ path: 'b.ts', patch: '@@ -1 +1 @@\n+x', patchTruncated: true, additions: 1 }),
@@ -260,17 +326,17 @@ describe('ChangesPanel missing patches', () => {
 
 describe('ChangesPanel empty states', () => {
   it('says the diff is loading rather than showing an empty list', () => {
-    render(<ChangesPanel {...base} detail={null} pending />);
+    render(<Panel {...base} detail={null} pending />);
     expect(screen.getByText(/Loading this commit/)).toBeInTheDocument();
   });
 
   it('explains a diff that has not loaded while playing', () => {
-    render(<ChangesPanel {...base} detail={null} playing />);
+    render(<Panel {...base} detail={null} playing />);
     expect(screen.getByText(/Diffs load as playback passes each commit/)).toBeInTheDocument();
   });
 
   it('distinguishes a commit that changed nothing from one with no diff loaded', () => {
-    render(<ChangesPanel {...base} detail={detail(target.sha, [])} />);
+    render(<Panel {...base} detail={detail(target.sha, [])} />);
     expect(screen.getByText('This commit changed no files')).toBeInTheDocument();
     expect(screen.queryByText(/has not loaded/)).not.toBeInTheDocument();
   });
@@ -279,7 +345,7 @@ describe('ChangesPanel empty states', () => {
 describe('ChangesPanel focus', () => {
   it('opens the diff of a file it was told to reveal', () => {
     render(
-      <ChangesPanel
+      <Panel
         {...base}
         focus={{ path: 'src/b.ts' }}
         detail={detail(target.sha, [
@@ -296,7 +362,7 @@ describe('ChangesPanel focus', () => {
     const files = Array.from({ length: 150 }, (_, i) =>
       fileChange({ path: `dir/f${i}.ts`, patch: `@@ -1 +1 @@\n+${i}` }),
     );
-    render(<ChangesPanel {...base} focus={{ path: 'dir/f120.ts' }} detail={detail(target.sha, files)} />);
+    render(<Panel {...base} focus={{ path: 'dir/f120.ts' }} detail={detail(target.sha, files)} />);
     expect(screen.getByLabelText('Diff for dir/f120.ts')).toBeInTheDocument();
   });
 });

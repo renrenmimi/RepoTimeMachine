@@ -303,23 +303,52 @@ test.describe('reading a comparison', () => {
     ).toBeVisible();
   });
 
-  test('explains an aggregated total instead of passing it off as a net diff', async ({ page }) => {
+  test('computes a real net diff for a file touched by several commits', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     // Arriving at the first commit compares the whole range, so a file touched
     // more than once across it is exactly the case this is about.
     await openCompare(page);
     await expect(compareRelation(page)).toContainText(/is 15 commits ahead of/);
 
-    // A file touched more than once across fifteen commits.
-    const aggregated = page.locator('[class*="fileItem"]').filter({ hasText: 'app-shell.tsx' }).first();
-    await aggregated.locator('[class*="fileButton"]').click();
+    // app-shell.tsx is modified by three of the fifteen commits in between.
+    const item = page.locator('[class*="fileItem"][data-path="components/layout/app-shell.tsx"]');
+    await item.locator('[class*="fileButton"]').click();
 
-    const note = page.getByText(/changed more than once between the two points/);
-    await expect(note).toBeVisible();
-    await expect(note).toContainText(/totals across those changes/);
-    await expect(note).toContainText(/not the size of the net difference/);
-    // And never reported as "no change".
-    await expect(page.getByText(/no changes/i)).toHaveCount(0);
+    const diff = page.getByLabel('Diff for components/layout/app-shell.tsx');
+    await expect(diff).toBeVisible();
+    await expect(diff).toContainText('@@');
+
+    // The line counts on the row come from that diff, not from summing commits.
+    const plus = (await diff.innerText()).split('\n').filter((line) => line.startsWith('+')).length;
+    await expect(item.locator('[class*="plus"]')).toHaveText(`+${plus}`);
+  });
+
+  test('never falls back to an aggregated total anywhere in the demo', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+
+    // The demo ships its file content, so a net diff can always be computed.
+    // "Changed more than once" remains the honest answer for a live repository.
+    await expect(page.getByText('Changed more than once in this range')).toHaveCount(0);
+    await expect(page.getByText('No diff was provided')).toHaveCount(0);
+  });
+
+  test('withholds only the generated files, and says so before they are opened', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    // Commit 1 to 2: a short list, so the lockfile is on the first page of it.
+    await page.getByRole('slider', { name: /Commit position/ }).fill('1');
+    await page.waitForTimeout(500);
+    await openCompare(page);
+    await expect(compareRelation(page)).toContainText(/is 1 commit ahead of/);
+
+    const lockfile = page.locator('[class*="fileItem"][data-path="package-lock.json"]');
+    // Marked from the path, so nothing looks readable and then is not.
+    await expect(lockfile.locator('[class*="fileKind"]')).toHaveText('generated');
+
+    await lockfile.locator('[class*="fileButton"]').click();
+    await expect(page.getByText('Generated file — diff deliberately not shown')).toBeVisible();
+    await expect(page.getByText(/declared to be, not a count taken from a diff/)).toBeVisible();
   });
 
   test('says the file-type mix is estimated from extensions', async ({ page }) => {

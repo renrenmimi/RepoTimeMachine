@@ -79,10 +79,24 @@ export type FileChange = {
   patch: string | null;
   /**
    * Why `patch` is null, so the UI can explain itself instead of showing a blank
-   * box. `aggregated` means the file changed more than once inside a compared
-   * range, so no single hunk describes the net difference.
+   * box.
+   *
+   * - `binary` / `too-large`: the source declined to produce one.
+   * - `generated`: machine-written output whose diff is deliberately withheld.
+   * - `rename-only`: the file moved and its content did not change, so an empty
+   *   diff is the correct and complete answer.
+   * - `aggregated`: the file changed more than once inside a compared range and
+   *   the source cannot produce a net hunk for it.
+   * - `not-provided`: the source simply did not send one.
    */
-  patchOmittedReason: 'binary' | 'too-large' | 'not-provided' | 'aggregated' | null;
+  patchOmittedReason:
+    | 'binary'
+    | 'too-large'
+    | 'generated'
+    | 'rename-only'
+    | 'not-provided'
+    | 'aggregated'
+    | null;
   /** True when we truncated a patch GitHub did provide. */
   patchTruncated: boolean;
   blobUrl: string | null;

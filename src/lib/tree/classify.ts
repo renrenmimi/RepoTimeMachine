@@ -40,7 +40,9 @@ const GENERATED_FILENAMES = new Set([
 const GENERATED_DIRECTORIES = [
   'node_modules', 'vendor', 'dist', 'build', 'out', '.next', '.nuxt', '.svelte-kit',
   'coverage', '__pycache__', '.venv', 'venv', 'target', 'bin/debug', 'bin/release',
-  'derived', 'pods', '.gradle', 'obj', 'migrations/__pycache__',
+  // `generated/` is as common a convention as `dist/`, and a file inside one is
+  // machine-written by the same argument.
+  'generated', 'derived', 'pods', '.gradle', 'obj', 'migrations/__pycache__',
 ];
 
 /** Extension → display language. Deliberately coarse: this is a composition estimate. */
