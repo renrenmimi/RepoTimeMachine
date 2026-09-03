@@ -18,6 +18,7 @@ import { InsightsView } from './InsightsView';
 import { Overlay } from './Overlay';
 import { ReplayView, type SubView } from './ReplayView';
 import { RepoInput } from './RepoInput';
+import type { OpenedDiff } from './FileChangeList';
 import { EMPTY_TREE_VIEW, type TreeViewState } from './TreePanel';
 import { GitHubUsage, SourceStatus } from './SourceStatus';
 import { EmptyRepoState, ErrorState, HowItWorks, Landing, LoadingState } from './States';
@@ -61,6 +62,7 @@ export function TimeMachine() {
    */
   const [subView, setSubView] = useState<SubView>('repository');
   const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
+  const [openedDiff, setOpenedDiff] = useState<OpenedDiff | null>(null);
   const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
 
   const playback = state.playback;
@@ -138,6 +140,7 @@ export function TimeMachine() {
       // A different repository has a different tree, so none of that carries over.
       setSubView('repository');
       setDiffFocus(null);
+      setOpenedDiff(null);
       setTreeView(EMPTY_TREE_VIEW);
       void controller.load(ref);
     },
@@ -521,6 +524,8 @@ export function TimeMachine() {
                 subView={subView}
                 onSubView={setSubView}
                 diffFocus={diffFocus}
+                openedDiff={openedDiff}
+                onOpenedDiff={setOpenedDiff}
                 onDiffFocus={setDiffFocus}
                 treeView={treeView}
                 onTreeView={setTreeView}

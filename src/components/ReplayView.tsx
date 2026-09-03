@@ -7,6 +7,7 @@ import type { PlaybackState, Speed } from '@/lib/playback/machine';
 import type { Projection } from '@/lib/tree/projector';
 import { formatDateTime, formatGap, formatNumber } from '@/lib/format';
 import { ChangesPanel } from './ChangesPanel';
+import type { OpenedDiff } from './FileChangeList';
 import { HistoryColumn } from './HistoryColumn';
 import { Overlay } from './Overlay';
 import { Transport } from './Transport';
@@ -54,6 +55,8 @@ type Props = {
   onSubView: (next: SubView) => void;
   diffFocus: { path: string } | null;
   onDiffFocus: (next: { path: string } | null) => void;
+  openedDiff: OpenedDiff | null;
+  onOpenedDiff: (next: OpenedDiff | null) => void;
   treeView: TreeViewState;
   onTreeView: (next: TreeViewState) => void;
 };
@@ -95,6 +98,8 @@ export function ReplayView(props: Props) {
     onSubView,
     diffFocus,
     onDiffFocus,
+    openedDiff,
+    onOpenedDiff,
     treeView,
     onTreeView,
   } = props;
@@ -279,6 +284,8 @@ export function ReplayView(props: Props) {
               playing={playback.playing && !reducedMotion}
               focus={diffFocus}
               onOpenPatch={onPause}
+              opened={openedDiff}
+              onOpened={onOpenedDiff}
             />
           </div>
         )}

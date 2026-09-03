@@ -2,7 +2,7 @@
 
 import type { CommitDetail } from '@/lib/domain/types';
 import { formatNumber } from '@/lib/format';
-import { FileChangeList } from './FileChangeList';
+import { FileChangeList, type OpenedDiff } from './FileChangeList';
 import styles from './changes-panel.module.css';
 
 type Props = {
@@ -13,6 +13,9 @@ type Props = {
   /** A file to reveal and expand, set by a jump from the file tree. */
   focus: { path: string } | null;
   onOpenPatch: () => void;
+  /** Owned by the shell, so a diff left open survives a trip to another view. */
+  opened: OpenedDiff | null;
+  onOpened: (opened: OpenedDiff | null) => void;
   className?: string;
 };
 
@@ -23,7 +26,16 @@ type Props = {
  * with the file tree, so moving between the two sub-views never re-reads a
  * heading or loses the place.
  */
-export function ChangesPanel({ detail, pending, playing, focus, onOpenPatch, className }: Props) {
+export function ChangesPanel({
+  detail,
+  pending,
+  playing,
+  focus,
+  onOpenPatch,
+  opened,
+  onOpened,
+  className,
+}: Props) {
   if (!detail) {
     return (
       <section className={`${styles.panel} ${className ?? ''}`} aria-label="Files changed by this commit">
@@ -70,6 +82,8 @@ export function ChangesPanel({ detail, pending, playing, focus, onOpenPatch, cla
         resetKey={detail.sha}
         focus={focus}
         onOpenPatch={onOpenPatch}
+        opened={opened}
+        onOpened={onOpened}
       />
     </section>
   );

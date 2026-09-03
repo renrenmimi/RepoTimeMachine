@@ -38,9 +38,22 @@ type Props = {
   focus?: { path: string } | null;
   /** Called when a diff is opened, so playback can stop before it is read. */
   onOpenPatch?: () => void;
+  /**
+   * Which diff is open, when the caller wants to own that.
+   *
+   * The replay does, because this component unmounts when the visitor looks at
+   * `Compare` and a diff they had open should still be open when they come back.
+   * The key is carried with the path so a stale one reads as nothing open,
+   * exactly as the internal state does.
+   */
+  opened?: OpenedDiff | null;
+  onOpened?: (opened: OpenedDiff | null) => void;
 };
 
 export type DiffLayout = 'unified' | 'split';
+
+/** An open diff, tagged with the commit or comparison it belongs to. */
+export type OpenedDiff = { key: string; path: string };
 
 export function FileChangeList({
   files,
@@ -49,6 +62,8 @@ export function FileChangeList({
   resetKey = '',
   focus = null,
   onOpenPatch,
+  opened: controlledOpened,
+  onOpened,
 }: Props) {
   /*
    * Unified is the default and the only option on a narrow screen: two columns
@@ -60,7 +75,10 @@ export function FileChangeList({
   const layout: DiffLayout = wide ? preferred : 'unified';
   // Both bits of view state are keyed by `resetKey`, so moving to another commit
   // or comparison collapses them without an effect to reset anything.
-  const [opened, setOpened] = useState<{ key: string; path: string } | null>(null);
+  const [ownOpened, setOwnOpened] = useState<OpenedDiff | null>(null);
+  const controlled = onOpened !== undefined;
+  const opened = controlled ? (controlledOpened ?? null) : ownOpened;
+  const setOpened = controlled ? onOpened : setOwnOpened;
   const [expanded, setExpanded] = useState<{ key: string; limit: number } | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
 

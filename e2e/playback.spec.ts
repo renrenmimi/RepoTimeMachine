@@ -182,10 +182,13 @@ test.describe('pausing to read', () => {
     await expect(page.getByLabel('Filter file paths in the tree')).toHaveValue('lib');
   });
 
-  test('an expanded diff collapses, which is a place to read rather than to be', async ({ page }) => {
-    // Deliberate, and stated so it is a decision rather than an oversight: the
-    // sub-view and the filter are where you are, an open patch is what you were
-    // reading, and a list of collapsed files is the right thing to come back to.
+  test('an open diff is still open on the way back', async ({ page }) => {
+    /*
+     * The diff you were reading is the most specific thing you chose, and
+     * collapsing it costs a scroll and a click to get back to — and moves the
+     * list under you, which undoes the scroll position the other state
+     * preserves.
+     */
     await openRepo(page, REPOS.demo);
     await subTab(page, 'Changes').click();
     await page.locator('[class*="fileButton"]').first().click();
@@ -194,9 +197,25 @@ test.describe('pausing to read', () => {
 
     await viewTab(page, 'Insights').click();
     await page.waitForTimeout(700);
+    await viewTab(page, 'Compare').click();
+    await page.waitForTimeout(1400);
     await viewTab(page, 'Replay').click();
 
     await expect(subTab(page, 'Changes')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+  });
+
+  test('a different commit collapses it, because its files are different', async ({ page }) => {
+    // Keyed by commit, so the open diff belongs to the commit it was opened on
+    // rather than following the playhead onto a file that may not be there.
+    await openRepo(page, REPOS.demo);
+    await subTab(page, 'Changes').click();
+    await page.locator('[class*="fileButton"]').first().click();
+    const path = await page.locator('[class*="fileItem"]').first().getAttribute('data-path');
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+
+    await transport(page).next.click();
+    await page.waitForTimeout(900);
     await expect(page.getByLabel(`Diff for ${path}`)).toHaveCount(0);
   });
 

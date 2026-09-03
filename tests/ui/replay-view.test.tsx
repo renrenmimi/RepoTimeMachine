@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { OpenedDiff } from '@/components/FileChangeList';
 import { ReplayView, type SubView } from '@/components/ReplayView';
 import { EMPTY_TREE_VIEW, type TreeViewState } from '@/components/TreePanel';
 import { initialPlaybackState } from '@/lib/playback/machine';
@@ -41,9 +42,12 @@ function projection(
  * `ReplayView` in the real application — it unmounts on a view change — so the
  * harness has to hold them too for the interactions to behave as they do there.
  */
-function Harness(props: Omit<Parameters<typeof ReplayView>[0], 'subView' | 'onSubView' | 'diffFocus' | 'onDiffFocus' | 'treeView' | 'onTreeView'>) {
+type ShellHeld = 'subView' | 'onSubView' | 'diffFocus' | 'onDiffFocus' | 'openedDiff' | 'onOpenedDiff' | 'treeView' | 'onTreeView';
+
+function Harness(props: Omit<Parameters<typeof ReplayView>[0], ShellHeld>) {
   const [subView, setSubView] = useState<SubView>('repository');
   const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
+  const [openedDiff, setOpenedDiff] = useState<OpenedDiff | null>(null);
   const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
 
   return (
@@ -53,6 +57,8 @@ function Harness(props: Omit<Parameters<typeof ReplayView>[0], 'subView' | 'onSu
       onSubView={setSubView}
       diffFocus={diffFocus}
       onDiffFocus={setDiffFocus}
+      openedDiff={openedDiff}
+      onOpenedDiff={setOpenedDiff}
       treeView={treeView}
       onTreeView={setTreeView}
     />

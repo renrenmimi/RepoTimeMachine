@@ -45,9 +45,10 @@ file tree as it stood there, `Changes` for the diff. Both sub-views sit under th
 same heading and the same player, so moving between them never loses your place.
 
 Leaving `Replay` for `Compare` or `Insights` and coming back does not lose it
-either: the commit, the sub-view, the path filter, the expanded diff and the
-scroll position all survive the trip, because they live in the shell rather than
-in the view that unmounts.
+either: the commit, the sub-view, the path filter, the open diff and the scroll
+position all survive the trip, because they live in the shell rather than in the
+view that unmounts. Moving to another commit *does* collapse the diff, since its
+files are different ones.
 
 Diffs read as a unified patch by default, with an optional two-column view on a
 wide desktop. Narrow screens are always unified — two columns of code at 390px is
