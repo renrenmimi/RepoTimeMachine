@@ -1,0 +1,273 @@
+.view {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+/*
+ * A readable measure, not a full-bleed dashboard: charts need room, but a chart
+ * two metres wide is harder to relate to the paragraph under it, not easier.
+ */
+.inner {
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* -------------------------------------------------------------------- scope */
+
+.scope {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--bg-subtle);
+}
+
+.scopeTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 26px;
+  color: var(--text-primary);
+}
+
+.scopeText {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+/* Compact figures in a row — one number does not need one card. */
+.scopeFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+}
+
+.scopeFacts > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.scopeFacts dt {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.scopeFacts dd {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text-primary);
+}
+
+.limit {
+  composes: statusNote from './controls.module.css';
+}
+
+.scopeAction {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.loadOlder {
+  composes: button from './controls.module.css';
+}
+
+.scopeNote {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------------- blocks */
+
+.block {
+  min-width: 0;
+}
+
+.blockTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 26px;
+  color: var(--text-primary);
+}
+
+.blockCount {
+  composes: badge from './controls.module.css';
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.estimate {
+  composes: badge from './controls.module.css';
+  font-weight: 400;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.blockNote {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.empty {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------- milestones */
+
+.disclaimer {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.milestoneList {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.milestoneRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.milestoneRow[data-active] {
+  border-left: 2px solid var(--focus-ring);
+  padding-left: var(--space-3);
+  background: var(--bg-selected);
+}
+
+.milestoneHead {
+  min-width: 0;
+}
+
+.milestoneCommit {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.milestoneMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  color: var(--text-muted);
+}
+
+.mono {
+  composes: mono from './controls.module.css';
+}
+
+.ruleList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.rule {
+  min-width: 0;
+}
+
+.ruleLabel {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--text-primary);
+}
+
+.ruleEvidence {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.ruleRule {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-muted);
+}
+
+.ruleWindow {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--warning-text);
+}
+
+.confidence {
+  composes: badge from './controls.module.css';
+  font-weight: 400;
+}
+
+.confidence[data-level='window'] {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.confidence[data-level='probed'] {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.milestoneAction {
+  composes: button from './controls.module.css';
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 1199px) {
+  .view {
+    padding: var(--space-5) var(--space-5) var(--space-6);
+  }
+}
+
+@media (max-width: 899px) {
+  .view {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .inner {
+    gap: var(--space-5);
+  }
+}

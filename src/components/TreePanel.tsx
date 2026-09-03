@@ -14,9 +14,9 @@ import {
 import type { Projection } from '@/lib/tree/projector';
 import { useVirtualRows } from './hooks';
 import styles from './tree-panel.module.css';
-import shell from './shell.module.css';
 
-const ROW_HEIGHT = 24;
+/** Must match the row height in the stylesheet, or virtualisation drifts. */
+const ROW_HEIGHT = 34;
 
 type Props = {
   projection: Projection;
@@ -28,16 +28,28 @@ type Props = {
   version: number;
   className?: string;
   onSeek: (index: number) => void;
+  /** Opens this file's diff in the Changes view, on the same commit. */
+  onOpenDiff: (path: string) => void;
 };
 
-export function TreePanel({ projection, commits, currentIndex, details, loading, version, className, onSeek }: Props) {
+export function TreePanel({
+  projection,
+  commits,
+  currentIndex,
+  details,
+  loading,
+  version,
+  className,
+  onSeek,
+  onOpenDiff,
+}: Props) {
   /**
    * Expansion is derived, not stored.
    *
    * The default is "open what is small enough to read"; on top of that, every
    * folder containing a change in this commit is opened so the change is
    * visible. `overrides` holds only the folders the visitor toggled themselves,
-   * which is what should survive moving along the timeline.
+   * which is what should survive moving along the history.
    */
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [filter, setFilter] = useState('');
@@ -91,14 +103,9 @@ export function TreePanel({ projection, commits, currentIndex, details, loading,
   };
 
   return (
-    <section className={`${shell.panel} ${styles.panel} ${className ?? ''}`} aria-labelledby="tree-heading">
-      <header className={shell.panelHead}>
-        <h2 className={shell.panelTitle} id="tree-heading">
-          Working tree
-        </h2>
-        <span className={shell.panelHeadSpacer} />
-        <FidelityBadge projection={projection} commits={commits} onSeek={onSeek} />
-      </header>
+    <section className={`${styles.panel} ${className ?? ''}`} aria-label="Repository files at this commit">
+      {/* How this list was produced, first — not buried under the list it describes. */}
+      <FidelityLine projection={projection} commits={commits} onSeek={onSeek} />
 
       <div className={styles.tools}>
         <input
@@ -115,13 +122,29 @@ export function TreePanel({ projection, commits, currentIndex, details, loading,
         </span>
       </div>
 
-      <div className={shell.panelBody} ref={bodyRef}>
+      <div className={styles.body} ref={bodyRef}>
         {loading && rows.length === 0 ? (
           <TreeSkeleton />
         ) : rows.length === 0 ? (
-          <p className={styles.empty}>
-            {filter ? `No paths match “${filter}”.` : 'No files at this point in the history.'}
-          </p>
+          /* Three different nothings, told apart. */
+          filter ? (
+            <div className={styles.empty}>
+              <p className={styles.emptyTitle}>No path matches “{filter}”</p>
+              <p className={styles.emptyText}>
+                The filter matches paths in this commit&rsquo;s tree, not file contents.
+              </p>
+              <button type="button" className={styles.emptyAction} onClick={() => setFilter('')}>
+                Clear the filter
+              </button>
+            </div>
+          ) : (
+            <div className={styles.empty}>
+              <p className={styles.emptyTitle}>No files at this point in the history</p>
+              <p className={styles.emptyText}>
+                Nothing had been committed to the tree yet at this commit.
+              </p>
+            </div>
+          )
         ) : (
           <ul className={styles.list} role="tree" aria-label="Repository files">
             <li aria-hidden="true" style={{ height: virtual.paddingTop }} />
@@ -134,6 +157,7 @@ export function TreePanel({ projection, commits, currentIndex, details, loading,
                 commitSha={currentSha}
                 onToggle={toggle}
                 onSelect={setSelectedPath}
+                onOpenDiff={onOpenDiff}
               />
             ))}
             <li
@@ -151,7 +175,12 @@ export function TreePanel({ projection, commits, currentIndex, details, loading,
       </div>
 
       {selectedInfo ? (
-        <FileInspector info={selectedInfo} onSeek={onSeek} onClose={() => setSelectedPath(null)} />
+        <FileInspector
+          info={selectedInfo}
+          onSeek={onSeek}
+          onOpenDiff={onOpenDiff}
+          onClose={() => setSelectedPath(null)}
+        />
       ) : null}
     </section>
   );
@@ -164,11 +193,14 @@ type RowProps = {
   commitSha: string;
   onToggle: (path: string) => void;
   onSelect: (path: string) => void;
+  onOpenDiff: (path: string) => void;
 };
 
-function TreeRowItem({ node, expanded, selected, commitSha, onToggle, onSelect }: RowProps) {
+function TreeRowItem({ node, expanded, selected, commitSha, onToggle, onSelect, onOpenDiff }: RowProps) {
   const isDir = node.type === 'dir';
   const badge = node.facts ? kindLabel(node.facts.kind) : null;
+  // A deleted file is no longer in the tree, so its diff lives in Changes only.
+  const hasDiff = !isDir && node.status !== null && node.status !== undefined;
 
   return (
     <li
@@ -176,7 +208,7 @@ function TreeRowItem({ node, expanded, selected, commitSha, onToggle, onSelect }
       data-status={node.status ?? undefined}
       data-selected={selected || undefined}
       data-dir={isDir || undefined}
-      style={{ height: ROW_HEIGHT, paddingLeft: `${node.depth * 12 + 8}px` }}
+      style={{ height: ROW_HEIGHT, paddingLeft: `${node.depth * 18 + 12}px` }}
       role="treeitem"
       aria-expanded={isDir ? expanded : undefined}
       aria-selected={selected || undefined}
@@ -189,19 +221,27 @@ function TreeRowItem({ node, expanded, selected, commitSha, onToggle, onSelect }
       >
         <span className={styles.chevron} aria-hidden="true">
           {isDir ? (
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 8 8"
+              fill="currentColor"
+              style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}
+            >
               <path d="M2 0.5 6.5 4 2 7.5z" />
             </svg>
           ) : null}
         </span>
 
-        {/* Remounting on every commit replays the pulse without a timer. */}
+        {/* Remounting on every commit replays the highlight without a timer. */}
         <span
           key={`${node.path}:${commitSha}`}
           className={styles.marker}
           data-status={node.status ?? undefined}
           aria-hidden="true"
-        />
+        >
+          {node.status ? statusSymbol(node.status) : null}
+        </span>
 
         <span className={styles.name}>{node.name}</span>
 
@@ -219,8 +259,33 @@ function TreeRowItem({ node, expanded, selected, commitSha, onToggle, onSelect }
 
         {node.status ? <span className="visually-hidden">{statusWord(node.status)} in this commit</span> : null}
       </button>
+
+      {hasDiff ? (
+        <button
+          type="button"
+          className={styles.rowDiff}
+          onClick={() => onOpenDiff(node.path)}
+          aria-label={`Open the diff for ${node.path}`}
+          title="Open this file's diff for this commit"
+        >
+          Diff
+        </button>
+      ) : null}
     </li>
   );
+}
+
+function statusSymbol(status: NonNullable<TreeNode['status']>): string {
+  switch (status) {
+    case 'added':
+      return '+';
+    case 'removed':
+      return '−';
+    case 'renamed':
+      return '→';
+    default:
+      return '~';
+  }
 }
 
 function statusWord(status: NonNullable<TreeNode['status']>): string {
@@ -236,7 +301,14 @@ function statusWord(status: NonNullable<TreeNode['status']>): string {
   }
 }
 
-function FidelityBadge({
+/**
+ * How this file list was produced.
+ *
+ * Three genuinely different states — read here, rebuilt from a nearby tree plus
+ * every diff since, or rebuilt with diffs still missing — and only the third is
+ * a caveat, so only the third is styled as one.
+ */
+function FidelityLine({
   projection,
   commits,
   onSeek,
@@ -245,46 +317,56 @@ function FidelityBadge({
   commits: Commit[];
   onSeek: (index: number) => void;
 }) {
-  const sourceCommit = projection.sourceIndex >= 0 ? commits[projection.sourceIndex] : undefined;
-
   if (projection.sourceIndex < 0) {
     return (
-      <span className={styles.fidelity} data-level="unknown" title="No file tree has been read yet.">
-        no snapshot
-      </span>
+      <p className={styles.fidelity} data-level="unknown">
+        <span className={styles.fidelityBadge}>No snapshot</span>
+        <span className={styles.fidelityText}>No file tree has been read yet, so there is nothing to show.</span>
+      </p>
     );
   }
 
   if (projection.fidelity === 'exact') {
     return (
-      <span className={styles.fidelity} data-level="exact" title="A file tree was read at this exact commit.">
-        exact
-      </span>
+      <p className={styles.fidelity} data-level="exact">
+        <span className={styles.fidelityBadge}>Snapshot</span>
+        <span className={styles.fidelityText}>A file tree was read at this exact commit.</span>
+        {projection.sourceTruncated ? (
+          <span className={styles.fidelityWarn}>
+            GitHub truncated it because the repository is very large, so some paths are missing.
+          </span>
+        ) : null}
+      </p>
     );
   }
 
   if (projection.fidelity === 'derived') {
     return (
-      <span
-        className={styles.fidelity}
-        data-level="derived"
-        title={`Rebuilt from the tree at commit ${projection.sourceIndex + 1} plus every diff since. No gaps.`}
-      >
-        rebuilt
-      </span>
+      <p className={styles.fidelity} data-level="derived">
+        <span className={styles.fidelityBadge}>Reconstructed</span>
+        <span className={styles.fidelityText}>
+          Rebuilt from the tree at commit {projection.sourceIndex + 1} plus every diff since. No gaps.
+        </span>
+      </p>
     );
   }
 
   return (
-    <button
-      type="button"
-      className={styles.fidelity}
-      data-level="partial"
-      onClick={() => sourceCommit && onSeek(projection.sourceIndex)}
-      title={`Built from the tree at commit ${projection.sourceIndex + 1}; ${projection.missingCommits} commit diff${projection.missingCommits === 1 ? '' : 's'} in between are still loading. Click to jump to that snapshot.`}
-    >
-      ≈ {projection.missingCommits} gap{projection.missingCommits === 1 ? '' : 's'}
-    </button>
+    <p className={styles.fidelity} data-level="partial">
+      <span className={styles.fidelityBadge}>Approximate</span>
+      <span className={styles.fidelityText}>
+        Built from the tree at commit {projection.sourceIndex + 1}; {formatNumber(projection.missingCommits)} commit
+        diff{projection.missingCommits === 1 ? '' : 's'} in between have not loaded, so paths they touched may be
+        wrong.
+      </span>
+      <button
+        type="button"
+        className={styles.fidelityAction}
+        onClick={() => commits[projection.sourceIndex] && onSeek(projection.sourceIndex)}
+      >
+        Go to commit {projection.sourceIndex + 1}
+      </button>
+    </p>
   );
 }
 
@@ -294,6 +376,7 @@ type FileInfo = {
   size: number | null;
   kind: string;
   language: string | null;
+  changedHere: boolean;
   lastChange: { commit: Commit; additions: number; deletions: number; status: string } | null;
   searchedCommits: number;
 };
@@ -334,12 +417,23 @@ function describeFile(
     size: state?.size ?? null,
     kind: facts.kind,
     language: facts.language,
+    changedHere: projection.changes.has(path),
     lastChange,
     searchedCommits: searched,
   };
 }
 
-function FileInspector({ info, onSeek, onClose }: { info: FileInfo; onSeek: (index: number) => void; onClose: () => void }) {
+function FileInspector({
+  info,
+  onSeek,
+  onOpenDiff,
+  onClose,
+}: {
+  info: FileInfo;
+  onSeek: (index: number) => void;
+  onOpenDiff: (path: string) => void;
+  onClose: () => void;
+}) {
   const { dir, name } = splitPath(info.path);
   return (
     <aside className={styles.inspector} aria-label="Selected file">
@@ -348,25 +442,34 @@ function FileInspector({ info, onSeek, onClose }: { info: FileInfo; onSeek: (ind
           <span className={styles.inspectorDir}>{dir}</span>
           <span className={styles.inspectorName}>{name}</span>
         </p>
-        <button type="button" className={styles.inspectorClose} onClick={onClose} aria-label="Clear file selection">
-          ✕
+        <button type="button" className={styles.inspectorClose} onClick={onClose}>
+          Clear
         </button>
       </div>
 
       <dl className={styles.inspectorFacts}>
         <div>
-          <dt>type</dt>
+          <dt>Type</dt>
           <dd>{info.language ?? info.kind}</dd>
         </div>
         <div>
-          <dt>size</dt>
-          <dd>{info.size !== null ? formatBytes(info.size) : 'unknown here'}</dd>
+          <dt>Size</dt>
+          {/* Unknown rather than 0: a tree that omitted the size did not report zero. */}
+          <dd>{info.size !== null ? formatBytes(info.size) : 'Unknown here'}</dd>
         </div>
       </dl>
 
-      {info.lastChange ? (
-        <button type="button" className={styles.inspectorChange} onClick={() => onSeek(info.lastChange!.commit.index)}>
-          <span className={styles.inspectorChangeLabel}>last change at or before this point</span>
+      {info.changedHere ? (
+        <button type="button" className={styles.inspectorAction} onClick={() => onOpenDiff(info.path)}>
+          Open this file&rsquo;s diff
+        </button>
+      ) : info.lastChange ? (
+        <button
+          type="button"
+          className={styles.inspectorChange}
+          onClick={() => onSeek(info.lastChange!.commit.index)}
+        >
+          <span className={styles.inspectorChangeLabel}>Last change at or before this point</span>
           <span className={styles.inspectorChangeSubject}>{info.lastChange.commit.subject}</span>
           <span className={styles.inspectorChangeMeta}>
             <span className={styles.mono}>{info.lastChange.commit.shortSha}</span>
@@ -388,7 +491,7 @@ function TreeSkeleton() {
   return (
     <ul className={styles.skeleton} aria-hidden="true">
       {[68, 44, 82, 56, 74, 38, 90, 50, 64, 78, 46, 70].map((width, index) => (
-        <li key={index} style={{ width: `${width}%`, marginLeft: `${(index % 3) * 12 + 8}px` }} />
+        <li key={index} style={{ width: `${width}%`, marginLeft: `${(index % 3) * 18 + 12}px` }} />
       ))}
     </ul>
   );

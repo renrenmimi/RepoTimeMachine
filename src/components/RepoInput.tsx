@@ -9,11 +9,21 @@ type Props = {
   current: RepoRef | null;
   busy: boolean;
   onSubmit: (ref: RepoRef) => void;
+  /** Offered where there is something to go back to; omitted on the home screen. */
+  onCancel?: () => void;
   autoFocus?: boolean;
-  size?: 'compact' | 'large';
+  /** `primary` fills the submit button — used where this is the main action. */
+  emphasis?: 'primary' | 'secondary';
 };
 
-export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = 'compact' }: Props) {
+export function RepoInput({
+  current,
+  busy,
+  onSubmit,
+  onCancel,
+  autoFocus = false,
+  emphasis = 'secondary',
+}: Props) {
   // `draft` is only set while the visitor is typing. The rest of the time the
   // field simply shows whatever repository is loaded, so a demo button, a shared
   // URL and the Back button all keep it in step without an effect.
@@ -22,6 +32,7 @@ export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = '
   const inputRef = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const hintId = useId();
+  const fieldId = useId();
 
   const value = draft ?? current?.slug ?? '';
 
@@ -39,19 +50,23 @@ export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = '
     inputRef.current?.blur();
   };
 
+  /** Abandoning an edit leaves the loaded repository exactly as it was. */
+  const cancel = () => {
+    setDraft(null);
+    setError(null);
+    onCancel?.();
+  };
+
   return (
-    <form
-      className={`${styles.form} ${size === 'large' ? styles.large : ''}`}
-      onSubmit={handleSubmit}
-      role="search"
-    >
-      <div className={styles.field}>
-        <span className={styles.prefix} aria-hidden="true">
-          github.com/
-        </span>
+    <form className={styles.form} onSubmit={handleSubmit}>
+      <label className={styles.label} htmlFor={fieldId}>
+        Open a public repository
+      </label>
+
+      <div className={styles.row}>
         <input
           ref={inputRef}
-          id="repo-input"
+          id={fieldId}
           className={styles.input}
           type="text"
           name="repository"
@@ -62,7 +77,6 @@ export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = '
           autoFocus={autoFocus}
           value={value}
           placeholder="owner/repository"
-          aria-label="GitHub repository, as owner/repository or a repository URL"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : hintId}
           onChange={(event) => {
@@ -71,14 +85,23 @@ export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = '
           }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
-              setDraft(null);
-              setError(null);
+              event.stopPropagation();
+              cancel();
             }
           }}
         />
-        <button className={styles.submit} type="submit" disabled={busy}>
-          {busy ? 'Loading' : 'Load'}
+        <button
+          className={emphasis === 'primary' ? styles.submitPrimary : styles.submit}
+          type="submit"
+          disabled={busy}
+        >
+          {busy ? 'Loading…' : 'Load repository'}
         </button>
+        {onCancel ? (
+          <button className={styles.cancel} type="button" onClick={cancel}>
+            Cancel
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -86,8 +109,10 @@ export function RepoInput({ current, busy, onSubmit, autoFocus = false, size = '
           {error}
         </p>
       ) : (
+        /* Only what you must know to use the field. The rest is in How it works. */
         <p className={styles.hint} id={hintId}>
-          Public repositories only. Paste a URL or type <span className={styles.mono}>owner/repository</span>.
+          Public repositories only, on the default branch. Paste a GitHub URL or type{' '}
+          <span className={styles.mono}>owner/repository</span>.
         </p>
       )}
     </form>

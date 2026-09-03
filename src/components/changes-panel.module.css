@@ -1,0 +1,20 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.empty {
+  composes: empty from './controls.module.css';
+}
+
+.emptyTitle {
+  composes: emptyTitle from './controls.module.css';
+}
+
+.emptyText {
+  composes: emptyText from './controls.module.css';
+}

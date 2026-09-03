@@ -1,74 +1,252 @@
 /*
  * Design tokens.
  *
- * One dark theme, tuned to read like source-control instrumentation: graphite
- * panels, warm neutral text, and two signal colours (green for growth, amber
- * for attention) used sparingly so they still mean something.
+ * A light-first reading surface — soft neutral page, clean white panels, one
+ * steady teal-green accent — with a dark theme built as its own palette rather
+ * than an inversion of the light one.
  *
- * Every value below is referenced through a token; components never hard-code
- * a colour, radius or duration.
+ * Every colour a component uses has a semantic name here. Nothing hard-codes a
+ * hex value, so a contrast fix is a one-line change and the charts, the diff and
+ * the interface can never drift out of the same theme.
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
   /* ---- surface ---------------------------------------------------------- */
-  --surface-void: #070908;
-  --surface-base: #0c0f0d;
-  --surface-panel: #121614;
-  --surface-raised: #181d1a;
-  --surface-inset: #0a0d0b;
-  --surface-hover: #1e2320;
-  --surface-active: #242a26;
-
-  /* ---- line ------------------------------------------------------------- */
-  --line-faint: #1c211e;
-  --line: #262c28;
-  --line-strong: #38403a;
-  --line-signal: #2f5c3c;
+  --bg-page: #f6f7f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #edf2ef;
+  --bg-hover: #e5ece7;
+  --bg-selected: #e2f0e8;
 
   /* ---- text ------------------------------------------------------------- */
-  --text-bright: #f0ece1;
-  --text: #ddd8cb;
-  --text-dim: #9c988c;
-  --text-faint: #6d6a61;
-  --text-on-signal: #071008;
+  --text-primary: #1b2922;
+  --text-secondary: #53645a;
+  --text-muted: #5d6d63;
+  --text-accent: #17684c;
 
-  /* ---- signal ----------------------------------------------------------- */
-  --signal: #7bcb8d;
-  --signal-bright: #9fe0ad;
-  --signal-dim: #47845a;
-  --signal-wash: rgba(123, 203, 141, 0.12);
-  --signal-wash-strong: rgba(123, 203, 141, 0.22);
+  /* ---- line ------------------------------------------------------------- */
+  /* `subtle` groups content; `control` is the edge of something operable and is
+     held to the stronger non-text contrast requirement. */
+  --border-subtle: #dee5e0;
+  --border-control: #7f9185;
+  --focus-ring: #17684c;
 
-  --amber: #e2a75c;
-  --amber-bright: #f2c489;
-  --amber-dim: #8a6532;
-  --amber-wash: rgba(226, 167, 92, 0.12);
+  /* ---- action ----------------------------------------------------------- */
+  --action-bg: #17684c;
+  --action-hover: #12583f;
+  --action-pressed: #0d4833;
+  --action-text: #ffffff;
 
-  --minus: #d2776a;
-  --minus-dim: #8a483f;
-  --minus-wash: rgba(210, 119, 106, 0.12);
+  /* ---- status ----------------------------------------------------------- */
+  --info-text: #315d9c;
+  --info-bg: #eff5fd;
+  --warning-text: #85540c;
+  --warning-bg: #fff8e8;
+  --error-text: #aa302c;
+  --error-bg: #fff0ef;
+  --success-text: #17684c;
+  --success-bg: #eaf5ef;
 
-  --accent-rename: #7fa8d4;
-  --accent-rename-wash: rgba(127, 168, 212, 0.12);
+  /* ---- diff ------------------------------------------------------------- */
+  --diff-add-text: #17684c;
+  --diff-add-bg: #eaf5ef;
+  --diff-remove-text: #aa302c;
+  --diff-remove-bg: #fff0ef;
+  --diff-hunk-text: #315d9c;
+  --diff-hunk-bg: #eff5fd;
 
+  /* ---- code ------------------------------------------------------------- */
+  --code-bg: #f3f5f3;
+  --code-text: #233a2c;
+  --code-comment: #5d6d63;
+  --code-keyword: #69418e;
+  --code-string: #17684c;
+  --code-number: #875019;
+
+  /* ---- chart ------------------------------------------------------------ */
+  /* `chart-fill` is decoration only: no text is ever placed on it. */
+  --chart-line: #17684c;
+  --chart-fill: rgba(23, 104, 76, 0.1);
+  --chart-grid: #dce4de;
+  --compare-from: #315d9c;
+  --compare-to: #17684c;
+
+  --overlay: rgba(27, 41, 34, 0.3);
+
+  /*
+   * Categorical hues for file-type composition.
+   *
+   * Assigned through a stable map, never per render, so a language keeps its
+   * colour between the timeline and a comparison. Each one is only ever a dot or
+   * a bar segment next to a text label — never the sole carrier of meaning.
+   */
+  --cat-1: #17684c;
+  --cat-2: #315d9c;
+  --cat-3: #875019;
+  --cat-4: #69418e;
+  --cat-5: #0f6b74;
+  --cat-6: #8a5b1f;
+  --cat-7: #7a3a63;
+  --cat-8: #4a5a52;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-page: #111714;
+  --bg-surface: #19211d;
+  --bg-subtle: #222d27;
+  --bg-hover: #2a3930;
+  --bg-selected: #233e30;
+
+  --text-primary: #e8eee9;
+  --text-secondary: #afbfb4;
+  --text-muted: #9cad9f;
+  --text-accent: #8bd8b0;
+
+  --border-subtle: #34463a;
+  --border-control: #7f9587;
+  --focus-ring: #8bd8b0;
+
+  --action-bg: #8bd8b0;
+  --action-hover: #a0e2bf;
+  --action-pressed: #76c79d;
+  --action-text: #111714;
+
+  --info-text: #a6c8f5;
+  --info-bg: #1d2e42;
+  --warning-text: #f0cc81;
+  --warning-bg: #322a1b;
+  --error-text: #fda7a0;
+  --error-bg: #341e20;
+  --success-text: #8bd8b0;
+  --success-bg: #162c22;
+
+  --diff-add-text: #8bd8b0;
+  --diff-add-bg: #162c22;
+  --diff-remove-text: #fda7a0;
+  --diff-remove-bg: #341e20;
+  --diff-hunk-text: #a6c8f5;
+  --diff-hunk-bg: #1d2e42;
+
+  --code-bg: #121b15;
+  --code-text: #dde8df;
+  --code-comment: #9cad9f;
+  --code-keyword: #d1b2ed;
+  --code-string: #8bd8b0;
+  --code-number: #efc08b;
+
+  --chart-line: #8bd8b0;
+  --chart-fill: rgba(139, 216, 176, 0.12);
+  --chart-grid: #34463a;
+  --compare-from: #a6c8f5;
+  --compare-to: #8bd8b0;
+
+  --overlay: rgba(0, 0, 0, 0.48);
+
+  --cat-1: #8bd8b0;
+  --cat-2: #a6c8f5;
+  --cat-3: #efc08b;
+  --cat-4: #d1b2ed;
+  --cat-5: #7fd3d9;
+  --cat-6: #e0bd8c;
+  --cat-7: #e3a8cd;
+  --cat-8: #b3c4b8;
+}
+
+/*
+ * A visitor who has expressed no preference gets the dark palette when their
+ * system asks for one. An explicit choice is written onto the element as
+ * `data-theme`, and the selectors above then win over this block.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    color-scheme: dark;
+
+    --bg-page: #111714;
+    --bg-surface: #19211d;
+    --bg-subtle: #222d27;
+    --bg-hover: #2a3930;
+    --bg-selected: #233e30;
+
+    --text-primary: #e8eee9;
+    --text-secondary: #afbfb4;
+    --text-muted: #9cad9f;
+    --text-accent: #8bd8b0;
+
+    --border-subtle: #34463a;
+    --border-control: #7f9587;
+    --focus-ring: #8bd8b0;
+
+    --action-bg: #8bd8b0;
+    --action-hover: #a0e2bf;
+    --action-pressed: #76c79d;
+    --action-text: #111714;
+
+    --info-text: #a6c8f5;
+    --info-bg: #1d2e42;
+    --warning-text: #f0cc81;
+    --warning-bg: #322a1b;
+    --error-text: #fda7a0;
+    --error-bg: #341e20;
+    --success-text: #8bd8b0;
+    --success-bg: #162c22;
+
+    --diff-add-text: #8bd8b0;
+    --diff-add-bg: #162c22;
+    --diff-remove-text: #fda7a0;
+    --diff-remove-bg: #341e20;
+    --diff-hunk-text: #a6c8f5;
+    --diff-hunk-bg: #1d2e42;
+
+    --code-bg: #121b15;
+    --code-text: #dde8df;
+    --code-comment: #9cad9f;
+    --code-keyword: #d1b2ed;
+    --code-string: #8bd8b0;
+    --code-number: #efc08b;
+
+    --chart-line: #8bd8b0;
+    --chart-fill: rgba(139, 216, 176, 0.12);
+    --chart-grid: #34463a;
+    --compare-from: #a6c8f5;
+    --compare-to: #8bd8b0;
+
+    --overlay: rgba(0, 0, 0, 0.48);
+
+    --cat-1: #8bd8b0;
+    --cat-2: #a6c8f5;
+    --cat-3: #efc08b;
+    --cat-4: #d1b2ed;
+    --cat-5: #7fd3d9;
+    --cat-6: #e0bd8c;
+    --cat-7: #e3a8cd;
+    --cat-8: #b3c4b8;
+  }
+}
+
+:root {
   /* ---- type ------------------------------------------------------------- */
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, 'SF Mono', 'Menlo', 'Consolas', monospace;
+  /* System faces: the interface has no typographic identity to protect, and a
+     downloaded font would be the largest thing on the first paint. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', roboto, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'SFMono-Regular', consolas, 'Liberation Mono', menlo, ui-monospace, monospace;
 
-  --text-3xs: 0.625rem;
-  --text-2xs: 0.6875rem;
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-base: 0.9375rem;
-  --text-lg: 1.0625rem;
-  --text-xl: 1.375rem;
-  --text-2xl: 1.875rem;
-  --text-3xl: 2.5rem;
+  --text-xs: 0.75rem; /* 12px — data labels, the smallest size used */
+  --text-sm: 0.8125rem; /* 13px — explanation, source, limits */
+  --text-md: 0.875rem; /* 14px — controls, file names, list rows */
+  --text-base: 0.9375rem; /* 15px — body copy */
+  --text-lede: 1rem; /* 16px — lede, brand */
+  --text-lg: 1.125rem; /* 18px — section titles */
+  --text-xl: 1.25rem; /* 20px — compact statistics */
+  --text-subject: 1.375rem; /* 22px — commit subject */
+  --text-2xl: 1.75rem; /* 28px — workspace title */
+  --text-3xl: 2.25rem; /* 36px — landing title */
 
-  --tracking-wide: 0.08em;
-  --tracking-wider: 0.14em;
+  /* 650 where the face has it, 600 where it does not. */
+  --weight-strong: 650;
 
   /* ---- space ------------------------------------------------------------ */
   --space-1: 0.25rem;
@@ -77,33 +255,36 @@
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 2rem;
-  --space-7: 3rem;
 
   /* ---- shape ------------------------------------------------------------ */
-  --radius-sm: 2px;
-  --radius: 4px;
-  --radius-lg: 6px;
+  --radius-control: 8px;
+  --radius-surface: 12px;
+  --radius-menu: 10px;
 
   /* ---- motion ----------------------------------------------------------- */
   --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
   --duration-instant: 90ms;
-  --duration-fast: 160ms;
-  --duration: 260ms;
+  --duration-fast: 120ms;
+  --duration: 160ms;
   --duration-pulse: 900ms;
 
   /* ---- layout ----------------------------------------------------------- */
-  --rail-width: 340px;
-  --stats-width: 392px;
-  --transport-height: 108px;
-  --header-height: 60px;
+  --topbar-height: 56px;
+  --history-width: 272px;
+  --content-max: 1040px;
 
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
-  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.55);
+  /* Only genuine overlays cast one. */
+  --shadow-pop: 0 8px 24px rgba(27, 41, 34, 0.14), 0 1px 2px rgba(27, 41, 34, 0.08);
+}
+
+:root[data-theme='dark'],
+:root:not([data-theme='light']):not([data-theme='dark']) {
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /*
  * Reduced motion is a first-class mode, not a degradation: transitions become
- * immediate state changes so the timeline is still legible while playing.
+ * immediate state changes so playback is still legible while it runs.
  */
 @media (prefers-reduced-motion: reduce) {
   :root {

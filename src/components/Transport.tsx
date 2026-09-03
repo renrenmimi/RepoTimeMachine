@@ -3,8 +3,8 @@
 import { useMemo } from 'react';
 import type { Commit } from '@/lib/domain/types';
 import type { Milestone } from '@/lib/milestones/detect';
-import { SPEEDS, type PlaybackState, type Speed } from '@/lib/playback/machine';
-import { formatDate, formatNumber } from '@/lib/format';
+import { isAtEnd, SPEEDS, type PlaybackState, type Speed } from '@/lib/playback/machine';
+import { formatDate } from '@/lib/format';
 import styles from './transport.module.css';
 
 type Props = {
@@ -18,11 +18,19 @@ type Props = {
   onPrevious: () => void;
   onSeek: (index: number) => void;
   onSpeed: (speed: Speed) => void;
+  onLatest: () => void;
   disabled: boolean;
 };
 
 const TICK_BUDGET = 260;
 
+/**
+ * One row of controls and a thin track.
+ *
+ * The whole point of compressing this is that the controls and the thing they
+ * control have to be on screen together: a player whose position bar pushes the
+ * file tree below the fold is not a player.
+ */
 export function Transport({
   playback,
   commits,
@@ -33,12 +41,27 @@ export function Transport({
   onPrevious,
   onSeek,
   onSpeed,
+  onLatest,
   disabled,
 }: Props) {
   const count = commits.length;
   const max = Math.max(0, count - 1);
   const position = max === 0 ? 0 : playback.index / max;
   const current = commits[playback.index] ?? null;
+  const single = count <= 1;
+
+  /*
+   * At the last commit the button restarts from the beginning, which is what
+   * the reducer does — so it says so, rather than being disabled with no
+   * explanation of why.
+   */
+  const atEnd = !playback.playing && isAtEnd(playback) && count > 1;
+  const playLabel = playback.playing ? 'Pause' : atEnd ? 'Replay' : 'Play';
+  const playName = playback.playing
+    ? 'Pause playback'
+    : atEnd
+      ? 'Replay the history from the first loaded commit'
+      : 'Play history';
 
   const ticks = useMemo(() => {
     if (count === 0) return [];
@@ -69,50 +92,56 @@ export function Transport({
   return (
     <section className={styles.transport} aria-label="Playback controls">
       <div className={styles.row}>
-        <div className={styles.buttons}>
-          <button
-            type="button"
-            className={styles.button}
-            onClick={onPrevious}
-            disabled={disabled || playback.index === 0}
-            aria-label="Previous commit"
-            title="Previous commit (Left arrow)"
-          >
-            <PrevIcon />
-          </button>
-          <button
-            type="button"
-            className={`${styles.button} ${styles.play}`}
-            onClick={onPlayPause}
-            disabled={disabled || count <= 1}
-            aria-label={playback.playing ? 'Pause playback' : 'Play history'}
-            aria-pressed={playback.playing}
-            title={playback.playing ? 'Pause (Space)' : 'Play (Space)'}
-          >
-            {playback.playing ? <PauseIcon /> : <PlayIcon />}
-          </button>
-          <button
-            type="button"
-            className={styles.button}
-            onClick={onNext}
-            disabled={disabled || playback.index >= max}
-            aria-label="Next commit"
-            title="Next commit (Right arrow)"
-          >
-            <NextIcon />
-          </button>
-        </div>
+        <button
+          type="button"
+          className={styles.step}
+          onClick={onPrevious}
+          disabled={disabled || playback.index === 0}
+          aria-label="Previous commit"
+          title="Previous commit (Left arrow)"
+        >
+          <PrevIcon />
+        </button>
 
-        <div className={styles.readout}>
-          <span className={`${styles.position} tabular`}>
-            {count === 0 ? '—' : `${formatNumber(playback.index + 1)} / ${formatNumber(count)}`}
-          </span>
-          <span className={styles.readoutDate}>{current ? formatDate(current.author.date) : 'no commits loaded'}</span>
-        </div>
+        <button
+          type="button"
+          className={styles.play}
+          onClick={onPlayPause}
+          disabled={disabled || single}
+          aria-label={playName}
+          aria-pressed={playback.playing}
+          title={playback.playing ? 'Pause (Space)' : 'Play (Space)'}
+        >
+          {playback.playing ? <PauseIcon /> : <PlayIcon />}
+          <span className={styles.playLabel}>{playLabel}</span>
+        </button>
+
+        <button
+          type="button"
+          className={styles.step}
+          onClick={onNext}
+          disabled={disabled || playback.index >= max}
+          aria-label="Next commit"
+          title="Next commit (Right arrow)"
+        >
+          <NextIcon />
+        </button>
+
+        {/* The position and the date are stated once, in the heading directly
+            above this row; repeating them here would only be noise. */}
+        <button
+          type="button"
+          className={styles.latest}
+          onClick={onLatest}
+          disabled={disabled || playback.index >= max}
+          title="Jump to the newest commit in the loaded range"
+        >
+          Latest
+        </button>
 
         <div className={styles.speed} role="group" aria-label="Playback speed">
           <span className={styles.speedLabel} aria-hidden="true">
-            speed
+            Speed
           </span>
           {SPEEDS.map((speed) => (
             <button
@@ -133,16 +162,29 @@ export function Transport({
       </div>
 
       <div className={styles.trackArea}>
-        <div className={styles.milestoneRow} aria-hidden="true">
+        <div className={styles.track}>
+          <svg className={styles.ticks} viewBox="0 0 1000 12" preserveAspectRatio="none" aria-hidden="true">
+            {ticks.map((offset, index) => (
+              <line
+                key={index}
+                x1={offset * 1000}
+                x2={offset * 1000}
+                y1={index % 10 === 0 ? 2 : 4}
+                y2={index % 10 === 0 ? 10 : 8}
+                className={styles.tick}
+              />
+            ))}
+          </svg>
+
+          <div className={styles.progress} style={{ width: `${position * 100}%` }} aria-hidden="true" />
+
           {milestoneMarks.map((mark) => (
-            <button
+            <span
               key={mark.index}
-              type="button"
               className={styles.milestoneMark}
               data-approximate={mark.approximate || undefined}
               style={{ left: `${mark.offset * 100}%` }}
-              tabIndex={-1}
-              onClick={() => onSeek(mark.index)}
+              aria-hidden="true"
               title={
                 mark.approximate
                   ? `${mark.items.map((item) => item.label).join(' · ')} — somewhere at or after commit ${mark.index + 1}`
@@ -150,28 +192,8 @@ export function Transport({
               }
             />
           ))}
-        </div>
 
-        <div className={styles.track}>
-          <svg className={styles.ticks} viewBox="0 0 1000 24" preserveAspectRatio="none" aria-hidden="true">
-            <line x1="0" y1="12" x2="1000" y2="12" className={styles.baseline} />
-            {ticks.map((offset, index) => (
-              <line
-                key={index}
-                x1={offset * 1000}
-                x2={offset * 1000}
-                y1={index % 10 === 0 ? 4 : 7}
-                y2={index % 10 === 0 ? 20 : 17}
-                className={styles.tick}
-              />
-            ))}
-          </svg>
-
-          <div className={styles.progress} style={{ width: `${position * 100}%` }} aria-hidden="true" />
-          <div className={styles.playhead} style={{ left: `${position * 100}%` }} aria-hidden="true">
-            <span className={styles.playheadStem} />
-            <span className={styles.playheadKnob} />
-          </div>
+          <div className={styles.playhead} style={{ left: `${position * 100}%` }} aria-hidden="true" />
 
           <input
             className={styles.range}
@@ -191,19 +213,25 @@ export function Transport({
           />
         </div>
 
-        <div className={styles.scale}>
+        <p className={styles.scale}>
           <span>{commits[0] ? formatDate(commits[0].author.date) : ''}</span>
           <span className={styles.rangeLabel}>{rangeLabel}</span>
           <span>{commits[max] ? formatDate(commits[max]!.author.date) : ''}</span>
-        </div>
+        </p>
       </div>
+
+      {single ? (
+        <p className={styles.singleNote}>
+          There is one commit in this range, so there is nothing to play through.
+        </p>
+      ) : null}
     </section>
   );
 }
 
 function PlayIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <path d="M3 1.5 12 7l-9 5.5z" />
     </svg>
   );
@@ -211,7 +239,7 @@ function PlayIcon() {
 
 function PauseIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <rect x="3" y="2" width="3" height="10" rx="0.5" />
       <rect x="8" y="2" width="3" height="10" rx="0.5" />
     </svg>

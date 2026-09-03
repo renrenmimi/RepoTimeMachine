@@ -1,25 +1,11 @@
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
+import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
-
-const plexSans = IBM_Plex_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-plex-sans',
-  display: 'swap',
-});
-
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  variable: '--font-plex-mono',
-  display: 'swap',
-});
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://repo-time-machine.vercel.app';
 
 const description =
-  'Watch a public GitHub repository grow commit by commit: a playable timeline, an evolving file tree, commit diffs, and transparent milestone heuristics.';
+  'Step through the commits of a public GitHub repository: an evolving file tree, the diff each commit introduced, and a side-by-side comparison of any two points.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -50,15 +36,34 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0c0f0d',
-  colorScheme: 'dark',
+  // Both themes are first-class, so the browser chrome follows the one in use.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f6f7f5' },
+    { media: '(prefers-color-scheme: dark)', color: '#111714' },
+  ],
+  colorScheme: 'light dark',
   width: 'device-width',
   initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
+    /*
+     * `suppressHydrationWarning` covers the `data-theme` attribute: the script
+     * below writes it before the first paint, so the server markup — which
+     * cannot know the visitor's stored choice — never carries it.
+     */
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/*
+          Runs before paint, so an explicitly chosen theme never flashes the
+          other one. Inline rather than a module because a fetch would be a
+          round trip in front of the first pixel, and written as a child rather
+          than through `dangerouslySetInnerHTML` because it is a compile-time
+          constant with nothing interpolated into it.
+        */}
+        <script>{THEME_BOOTSTRAP}</script>
+      </head>
       <body>{children}</body>
     </html>
   );

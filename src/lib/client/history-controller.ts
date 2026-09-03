@@ -24,6 +24,7 @@ import {
   type GrowthSeries,
 } from '@/lib/stats/growth';
 import { TreeProjector } from '@/lib/tree/projector';
+import type { AppView } from '@/lib/url/state';
 import { ApiError, browserApi, type ApiErrorInfo, type GitHubApi } from './api';
 
 export type HistoryStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -42,6 +43,14 @@ export type HistoryState = {
   /** Bumped on every notification; use it as a memo dependency. */
   version: number;
   ref: RepoRef | null;
+  /**
+   * Which of the three questions is open.
+   *
+   * It lives in the controller rather than the component so that switching
+   * views can pause playback in the same update, and so that no view change
+   * can discard the loaded history.
+   */
+  view: AppView;
   status: HistoryStatus;
   error: ApiErrorInfo | null;
   meta: RepoMeta | null;
@@ -53,6 +62,14 @@ export type HistoryState = {
   pagesLoaded: number;
   loadingOlder: boolean;
   tags: Tag[];
+  /**
+   * Whether the tag list arrived.
+   *
+   * A failed tag request and a repository with no tags look identical if only
+   * the array is kept, and telling somebody there are no releases when the
+   * request simply failed is a lie the interface can avoid cheaply.
+   */
+  tagsStatus: 'idle' | 'loading' | 'ready' | 'error';
   rateLimit: RateLimitSnapshot | null;
   rateLimitAgeMs: number | null;
   snapshotCount: number;
@@ -68,19 +85,31 @@ export type HistoryState = {
    */
   playback: PlaybackState;
   /**
-   * The side-by-side comparison, when the visitor has opened one. A separate
-   * view rather than a panel: it answers "what is different between these two
-   * points", which is a different question from "what did this commit do".
+   * The side-by-side comparison. A separate view rather than a panel: it answers
+   * "what is different between these two points", which is a different question
+   * from "what did this commit do".
    */
   compare: CompareState;
   /** Non-fatal problems worth telling the visitor about. */
   notices: string[];
 };
 
+/**
+ * A comparison, in two halves.
+ *
+ * `draft*` is what the two selectors show; `base`/`head` are the endpoints of
+ * the comparison that was actually requested. Separating them is what stops an
+ * exploratory click on each selector from costing a round trip to GitHub, and
+ * it is also what lets the view refuse to show an old result under a new
+ * heading: whenever the two disagree, the result on screen is known to be stale.
+ */
 export type CompareState = {
-  /** True while the compare view is open, even before the data arrives. */
-  open: boolean;
-  /** Shas the visitor picked, as requested. */
+  /** Endpoints the visitor is choosing, before submitting them. */
+  draftBase: string | null;
+  draftHead: string | null;
+  draftBaseLabel: string | null;
+  draftHeadLabel: string | null;
+  /** Endpoints of the comparison that was requested, as requested. */
   base: string | null;
   head: string | null;
   /** Tag names, when an end was chosen by tag rather than by commit. */
@@ -92,7 +121,10 @@ export type CompareState = {
 };
 
 const EMPTY_COMPARE: CompareState = {
-  open: false,
+  draftBase: null,
+  draftHead: null,
+  draftBaseLabel: null,
+  draftHeadLabel: null,
   base: null,
   head: null,
   baseLabel: null,
@@ -101,6 +133,12 @@ const EMPTY_COMPARE: CompareState = {
   data: null,
   error: null,
 };
+
+/** True when the selectors have moved away from the loaded comparison. */
+export function isCompareDirty(compare: CompareState): boolean {
+  if (!compare.draftBase || !compare.draftHead) return false;
+  return compare.draftBase !== compare.base || compare.draftHead !== compare.head;
+}
 
 export type ControllerOptions = {
   api?: GitHubApi;
@@ -127,6 +165,7 @@ function initialState(): HistoryState {
   return {
     version: 0,
     ref: null,
+    view: 'replay',
     status: 'idle',
     error: null,
     meta: null,
@@ -137,6 +176,7 @@ function initialState(): HistoryState {
     pagesLoaded: 0,
     loadingOlder: false,
     tags: [],
+    tagsStatus: 'idle',
     rateLimit: null,
     rateLimitAgeMs: null,
     snapshotCount: 0,
@@ -307,11 +347,17 @@ export class HistoryController {
     ref: RepoRef,
     requestedSha: string | null = null,
     requestedCompare: { base: string; head: string } | null = null,
+    requestedView: AppView = 'replay',
   ): Promise<void> {
     if (this.#state.ref?.slug === ref.slug && this.#state.status === 'ready') {
-      // Already open: honour whichever view the caller asked for.
-      if (requestedCompare) this.openCompare(requestedCompare.base, requestedCompare.head);
-      else if (requestedSha) this.selectSha(requestedSha);
+      // Already open: honour whichever view the caller asked for. This is the
+      // Back-button path, so it must restore a state rather than reload data.
+      if (requestedCompare) {
+        this.openCompare(requestedCompare.base, requestedCompare.head);
+      } else {
+        if (requestedSha) this.selectSha(requestedSha);
+        this.setView(requestedView === 'compare' ? 'replay' : requestedView);
+      }
       return;
     }
 
@@ -319,7 +365,9 @@ export class HistoryController {
     this.#requestedSha = requestedSha;
     const generation = this.#generation;
     this.#abort = new AbortController();
-    this.#patch({ ref, status: 'loading' });
+    // A comparison link opens in that view as soon as the endpoints are known;
+    // until then the view is whatever the link asked for.
+    this.#patch({ ref, status: 'loading', view: requestedCompare ? 'compare' : requestedView });
 
     try {
       const repo = await this.#api.fetchRepo(ref, this.#fetchOptions());
@@ -396,9 +444,18 @@ export class HistoryController {
   }
 
   /**
-   * Where the playhead should sit for a newly loaded range: the commit asked for
-   * in the URL, else whatever was already selected, else the newest commit --
-   * the repository as it stands today, which is the most familiar starting point.
+   * Where the playhead should sit for a newly loaded range.
+   *
+   * In order: the commit a shared link asked for, then whatever was already
+   * selected — which is what keeps the same commit under the playhead when
+   * loading older history renumbers every index — and otherwise the *earliest*
+   * commit in the loaded range.
+   *
+   * Starting at the earliest rather than the newest is the whole point of the
+   * tool: arriving on the finished repository shows a result, and arriving on
+   * the first commit shows something that can be stepped through. The range may
+   * not begin at the repository's own first commit, which the interface says
+   * wherever it reports the range.
    */
   #chooseIndex(commits: readonly Commit[]): number {
     if (commits.length === 0) return 0;
@@ -413,7 +470,7 @@ export class HistoryController {
       const match = commits.find((commit) => commit.sha === this.#selectedSha);
       if (match) return match.index;
     }
-    return commits.length - 1;
+    return 0;
   }
 
   /** Applies a playback action and keeps the remembered selection in step. */
@@ -422,6 +479,33 @@ export class HistoryController {
     if (playback === this.#state.playback) return;
     this.#selectedSha = this.#state.commits[playback.index]?.sha ?? this.#selectedSha;
     this.#patch({ playback });
+  };
+
+  /**
+   * Stops playback without moving the playhead.
+   *
+   * Called whenever the visitor settles down to read something — a diff, a
+   * comparison, the insights page — because advancing underneath them would
+   * leave them looking at evidence for a commit they are no longer on.
+   */
+  pausePlayback = (): void => {
+    this.dispatchPlayback({ type: 'pause' });
+  };
+
+  /**
+   * Switches view, keeping every byte of loaded history.
+   *
+   * Leaving the replay pauses it, so returning finds the same commit rather
+   * than wherever the clock got to in the meantime. Position and speed are
+   * untouched.
+   */
+  setView = (view: AppView): void => {
+    if (this.#state.view === view) return;
+    const playback =
+      view === 'replay'
+        ? this.#state.playback
+        : playbackReducer(this.#state.playback, { type: 'pause' });
+    this.#patch({ view, playback });
   };
 
   /** Selects a commit by full or abbreviated sha, if it is in the loaded range. */
@@ -495,13 +579,15 @@ export class HistoryController {
   }
 
   async #loadTags(generation: number, ref: RepoRef): Promise<void> {
+    this.#patch({ tagsStatus: 'loading' });
     try {
       const payload = await this.#api.fetchTags(ref, this.#fetchOptions());
       if (this.#isStale(generation)) return;
-      this.#patch({ tags: payload.tags });
+      this.#patch({ tags: payload.tags, tagsStatus: 'ready' });
       this.#scheduleDerived();
     } catch (error) {
       if (isAbort(error) || this.#isStale(generation)) return;
+      this.#patch({ tagsStatus: 'error' });
       this.#notice('Tags could not be loaded, so release milestones are missing.');
     }
   }
@@ -704,8 +790,19 @@ export class HistoryController {
     const commits = this.#state.commits;
     const headSha = commits[commits.length - 1]?.sha;
     if (!headSha) return;
-    const headTree = this.#snapshots.get(headSha);
-    if (!headTree) return;
+
+    /*
+     * The candidate paths come from the newest tree in range, so that tree has
+     * to be in hand — and asking for it is free: the checkpoint plan always
+     * includes the newest commit, and the tree cache shares an in-flight
+     * request rather than issuing a second one.
+     *
+     * Awaiting it matters because the visitor no longer arrives at the newest
+     * commit: reading `#snapshots` and giving up if it was empty meant probes
+     * silently stopped running, and every milestone lost the precision they buy.
+     */
+    const headTree = this.#snapshots.get(headSha) ?? (await this.#ensureTree(generation, ref, headSha));
+    if (!headTree || this.#isStale(generation)) return;
 
     const headPaths = headTree.entries.filter((entry) => entry.type === 'blob').map((entry) => entry.path);
     const candidates = new Set<string>();
@@ -732,7 +829,12 @@ export class HistoryController {
   // --------------------------------------------------------------- compare ---
 
   /**
-   * Opens the side-by-side comparison for two points.
+   * Opens the compare view with two endpoints already loaded.
+   *
+   * Used for a shared link and for the default pair offered on arrival, both of
+   * which describe a comparison the visitor has effectively already asked for.
+   * Adjusting a selector afterwards goes through `setCompareDraft`, which costs
+   * nothing until submitted.
    *
    * Both ends may be abbreviated shas, which is what a shared link carries. Tag
    * names are resolved to shas by the caller, and passed on only as labels, so
@@ -744,8 +846,13 @@ export class HistoryController {
     labels: { base?: string | null; head?: string | null } = {},
   ): void => {
     this.#patch({
+      view: 'compare',
+      playback: playbackReducer(this.#state.playback, { type: 'pause' }),
       compare: {
-        open: true,
+        draftBase: base,
+        draftHead: head,
+        draftBaseLabel: labels.base ?? null,
+        draftHeadLabel: labels.head ?? null,
         base,
         head,
         baseLabel: labels.base ?? null,
@@ -758,28 +865,103 @@ export class HistoryController {
     void this.#loadCompare(this.#generation, base, head);
   };
 
-  /** Replaces one end, keeping the other. */
-  setCompareEnd = (side: 'base' | 'head', sha: string, label: string | null = null): void => {
-    const current = this.#state.compare;
-    const next = {
-      base: side === 'base' ? sha : current.base,
-      head: side === 'head' ? sha : current.head,
-      baseLabel: side === 'base' ? label : current.baseLabel,
-      headLabel: side === 'head' ? label : current.headLabel,
-    };
-    if (!next.base || !next.head) return;
-    this.openCompare(next.base, next.head, { base: next.baseLabel, head: next.headLabel });
+  /**
+   * Opens the compare view with a pair proposed but not yet run.
+   *
+   * Nothing is requested, so arriving in the view never spends quota on a
+   * comparison the visitor may not want.
+   */
+  prepareCompare = (
+    base: string | null,
+    head: string | null,
+    labels: { base?: string | null; head?: string | null } = {},
+  ): void => {
+    this.#patch({
+      view: 'compare',
+      playback: playbackReducer(this.#state.playback, { type: 'pause' }),
+      compare: {
+        ...EMPTY_COMPARE,
+        draftBase: base,
+        draftHead: head,
+        draftBaseLabel: labels.base ?? null,
+        draftHeadLabel: labels.head ?? null,
+      },
+    });
   };
 
-  /** Swaps the two ends, which is how a visitor reads the difference backwards. */
-  swapCompare = (): void => {
-    const { base, head, baseLabel, headLabel } = this.#state.compare;
+  /** Replaces one end of the proposed pair. Requests nothing. */
+  setCompareDraft = (side: 'base' | 'head', sha: string, label: string | null = null): void => {
+    const current = this.#state.compare;
+    this.#patch({
+      compare: {
+        ...current,
+        draftBase: side === 'base' ? sha : current.draftBase,
+        draftHead: side === 'head' ? sha : current.draftHead,
+        draftBaseLabel: side === 'base' ? label : current.draftBaseLabel,
+        draftHeadLabel: side === 'head' ? label : current.draftHeadLabel,
+      },
+    });
+  };
+
+  /**
+   * Swaps the proposed ends, which is how a visitor reads the difference
+   * backwards. Like any other change of selection, it waits to be submitted.
+   */
+  swapCompareDraft = (): void => {
+    const current = this.#state.compare;
+    if (!current.draftBase || !current.draftHead) return;
+    this.#patch({
+      compare: {
+        ...current,
+        draftBase: current.draftHead,
+        draftHead: current.draftBase,
+        draftBaseLabel: current.draftHeadLabel,
+        draftHeadLabel: current.draftBaseLabel,
+      },
+    });
+  };
+
+  /**
+   * Runs the proposed comparison.
+   *
+   * An identical pair that is already on screen is not re-requested, so pressing
+   * the button twice costs nothing; a pair fetched earlier in the session comes
+   * back from the cache.
+   */
+  submitCompare = (): void => {
+    const current = this.#state.compare;
+    const base = current.draftBase;
+    const head = current.draftHead;
     if (!base || !head) return;
-    this.openCompare(head, base, { base: headLabel, head: baseLabel });
+    if (base === current.base && head === current.head && current.status === 'ready') return;
+
+    this.#patch({
+      compare: {
+        ...current,
+        base,
+        head,
+        baseLabel: current.draftBaseLabel,
+        headLabel: current.draftHeadLabel,
+        status: 'loading',
+        // The old result described other endpoints, so it goes with them rather
+        // than sitting under the new heading.
+        data: null,
+        error: null,
+      },
+    });
+    void this.#loadCompare(this.#generation, base, head);
+  };
+
+  /** Retries the comparison currently on screen, after a failure. */
+  retryCompare = (): void => {
+    const { base, head } = this.#state.compare;
+    if (!base || !head) return;
+    this.#compareCache.clear();
+    this.#patch({ compare: { ...this.#state.compare, status: 'loading', data: null, error: null } });
+    void this.#loadCompare(this.#generation, base, head);
   };
 
   closeCompare = (): void => {
-    if (!this.#state.compare.open) return;
     this.#patch({ compare: EMPTY_COMPARE });
   };
 
@@ -797,14 +979,14 @@ export class HistoryController {
         },
       );
       if (this.#isStale(generation)) return;
-      // A later pick may already have superseded this one.
+      // A later submission may already have superseded this one.
       const current = this.#state.compare;
-      if (!current.open || current.base !== base || current.head !== head) return;
+      if (current.base !== base || current.head !== head) return;
       this.#patch({ compare: { ...current, status: 'ready', data: compare, error: null } });
     } catch (error) {
       if (isAbort(error) || this.#isStale(generation)) return;
       const current = this.#state.compare;
-      if (!current.open || current.base !== base || current.head !== head) return;
+      if (current.base !== base || current.head !== head) return;
       const info: ApiErrorInfo =
         error instanceof ApiError
           ? error.info

@@ -1,43 +1,60 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
-  compareButton,
+  compareRelation,
   comparePicker,
-  compareStatus,
+  compareRun,
   expectNoHorizontalOverflow,
+  openCompare,
   openRepo,
   REPOS,
   repoUrl,
-  waitForTags,
+  viewTab,
+  watchApi,
+  watchGitHub,
 } from './helpers';
 
-/** Counts requests that left for GitHub, which for the demo must always be none. */
-function watchGitHub(page: Page): string[] {
-  const calls: string[] = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).hostname.includes('github')) calls.push(request.url());
-  });
-  return calls;
-}
-
 test.describe('opening a comparison', () => {
-  test('opens from the timeline with a sensible pair already chosen', async ({ page }) => {
+  test('opens with the step before the current commit already chosen', async ({ page }) => {
     const github = watchGitHub(page);
     await openRepo(page, REPOS.demo);
-    // The default base is the last release before the commit in view, so the
-    // tags have to have arrived for that default to be the one under test.
-    await waitForTags(page, 'v1.0.0');
-    await compareButton(page).click();
+    await page.getByRole('slider', { name: /Commit position/ }).fill('9');
+    await page.waitForTimeout(500);
 
-    await expect(page.getByRole('heading', { level: 2, name: 'Compare two points' })).toBeVisible();
-    await expect(comparePicker(page, 'base')).toContainText('v1.0.0');
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
+
+    // The comparison somebody stepping through a history most likely wants.
+    await expect(comparePicker(page, 'base')).toContainText('#9');
+    await expect(comparePicker(page, 'head')).toContainText('#10');
+    await expect(compareRelation(page)).toContainText(/is 1 commit ahead of/);
     expect(github).toEqual([]);
+  });
+
+  test('opens on the whole loaded range when there is no step before', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    // Arrival is the first commit, which has no predecessor to compare against.
+    await openCompare(page);
+
+    await expect(comparePicker(page, 'base')).toContainText('#1');
+    await expect(comparePicker(page, 'head')).toContainText('#16');
+    // Never a commit compared with itself, which would answer nothing.
+    await expect(page.getByText('These are the same commit.')).toHaveCount(0);
+    await expect(compareRelation(page)).toContainText(/is 15 commits ahead of/);
+  });
+
+  test('names both ends in plain language, with the Git terms as hints', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+
+    await expect(comparePicker(page, 'base')).toContainText('From');
+    await expect(comparePicker(page, 'base')).toContainText('base');
+    await expect(comparePicker(page, 'head')).toContainText('To');
+    await expect(comparePicker(page, 'head')).toContainText('head');
   });
 
   test('writes both ends into the address bar, replacing the playhead', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
 
     await expect(page).toHaveURL(/base=[0-9a-f]{7,}/);
     await expect(page).toHaveURL(/head=[0-9a-f]{7,}/);
@@ -45,100 +62,182 @@ test.describe('opening a comparison', () => {
     await expect(page).not.toHaveURL(/[?&]c=/);
   });
 
-  test('replaces the timeline panels and hides the transport', async ({ page }) => {
+  test('replaces the replay and hides the player', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
 
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 2, name: 'Working tree' })).toHaveCount(0);
+    await expect(page.locator('[aria-label="Repository files at this commit"]')).toHaveCount(0);
   });
 
-  test('restores a shared comparison link exactly', async ({ page }) => {
+  test('restores a shared comparison link exactly, from the cache', async ({ page }) => {
     const github = watchGitHub(page);
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
 
     const shared = page.url();
+    const sentence = await compareRelation(page).textContent();
+
     await page.goto('about:blank');
     await page.goto(shared);
 
     await expect(page.getByRole('heading', { level: 2, name: 'Compare two points' })).toBeVisible();
-    await expect(page.getByText('relation')).toBeVisible();
+    await expect(compareRelation(page)).toHaveText(sentence ?? '');
     await expect(page).toHaveURL(shared);
     expect(github).toEqual([]);
   });
 
-  test('reports the whole demo history when comparing its ends', async ({ page }) => {
-    // First commit to last, by hand: the widest comparison the demo allows.
-    await page.goto(repoUrl(REPOS.demo));
-    await compareButton(page).click();
-    await comparePicker(page, 'base').click();
-    await page.getByRole('button', { name: /scaffold the application shell/ }).first().click();
+  test('compares any two points chosen by hand', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
 
-    await expect(page.getByText('relation')).toBeVisible();
-    // 15 commits separate the sixteen points.
-    await expect(page.locator('dl').getByText('15', { exact: true })).toBeVisible();
+    await comparePicker(page, 'base').click();
+    await page
+      .getByRole('dialog', { name: /Choose the base/ })
+      .getByRole('button', { name: /establish design tokens/ })
+      .click();
+    await comparePicker(page, 'head').click();
+    await page
+      .getByRole('dialog', { name: /Choose the head/ })
+      .getByRole('button', { name: /expand the learning library/ })
+      .click();
+    await compareRun(page).click();
+
+    // Commits 2 to 6: four commits apart.
+    await expect(compareRelation(page)).toContainText(/is 4 commits ahead of/);
   });
 });
 
 test.describe('choosing the two ends', () => {
+  test('costs no request until the comparison is submitted', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+
+    // Only from here on, so the default pair's own request is not counted.
+    const api = watchApi(page);
+
+    await comparePicker(page, 'head').click();
+    await page
+      .getByRole('dialog', { name: /Choose the head/ })
+      .getByRole('button', { name: /expand the learning library/ })
+      .click();
+    await comparePicker(page, 'base').click();
+    await page
+      .getByRole('dialog', { name: /Choose the base/ })
+      .getByRole('button', { name: /establish design tokens/ })
+      .click();
+    await page.getByRole('button', { name: 'Swap the two ends of the comparison' }).click();
+    await page.waitForTimeout(500);
+
+    expect(
+      api.filter((url) => url.includes('/api/gh/compare')),
+      'moving a selector must not request a comparison',
+    ).toEqual([]);
+  });
+
+  test('puts a stale result away instead of relabelling it', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    const before = await compareRelation(page).textContent();
+
+    await comparePicker(page, 'base').click();
+    await page
+      .getByRole('dialog', { name: /Choose the base/ })
+      .getByRole('button', { name: /publish the first guided lesson/ })
+      .click();
+
+    // The old sentence is gone, not sitting under the new endpoints.
+    await expect(page.getByText('Selection changed')).toBeVisible();
+    await expect(compareRelation(page)).toHaveCount(0);
+
+    await compareRun(page).click();
+    await expect(compareRelation(page)).toBeVisible();
+    expect(await compareRelation(page).textContent()).not.toBe(before);
+  });
+
   test('compares two tags', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
+    await openCompare(page);
 
     // The demo carries two release tags; put one on each side.
     await comparePicker(page, 'head').click();
-    await page.getByRole('button', { name: /^v1\.0\.0/ }).first().click();
+    await page.getByRole('dialog', { name: /Choose the head/ }).getByRole('button', { name: /^v1\.0\.0/ }).click();
     await comparePicker(page, 'base').click();
-    await page.getByRole('button', { name: /^v0\.1\.0/ }).first().click();
+    await page.getByRole('dialog', { name: /Choose the base/ }).getByRole('button', { name: /^v0\.1\.0/ }).click();
+    await compareRun(page).click();
 
     await expect(comparePicker(page, 'base')).toContainText('v0.1.0');
     await expect(comparePicker(page, 'head')).toContainText('v1.0.0');
-    // Both ends are labelled as tags in the summary.
-    await expect(page.getByText('v0.1.0').first()).toBeVisible();
-    await expect(page.getByText('v1.0.0').first()).toBeVisible();
+    await expect(compareRelation(page)).toContainText(/commits ahead of/);
+  });
+
+  test('calls a tag a tag, not a release', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await comparePicker(page, 'base').click();
+
+    const menu = page.getByRole('dialog', { name: /Choose the base/ });
+    await expect(menu.getByRole('button', { name: /^v1\.0\.0/ })).toContainText('tag');
+    await expect(menu.getByText(/release/i)).toHaveCount(0);
   });
 
   test('filters the picker by commit subject', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
+    await openCompare(page);
 
     await comparePicker(page, 'base').click();
+    const menu = page.getByRole('dialog', { name: /Choose the base/ });
     await page.getByLabel('Filter the base choices').fill('coding workspace');
-    await expect(page.getByRole('button', { name: /introduce the coding workspace/ })).toBeVisible();
-    await page.getByRole('button', { name: /introduce the coding workspace/ }).click();
 
-    await expect(page.getByText('introduce the coding workspace').first()).toBeVisible();
+    // Scoped to the menu: the same subject may also be in the result below.
+    await expect(menu.getByRole('button', { name: /introduce the coding workspace/ })).toBeVisible();
+    await menu.getByRole('button', { name: /introduce the coding workspace/ }).click();
+    await expect(comparePicker(page, 'base')).toContainText('introduce the coding workspace');
   });
 
-  test('swaps the two ends and reverses the reading', async ({ page }) => {
+  test('swaps the two ends and reverses the reading, once confirmed', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(compareStatus(page)).toHaveText('ahead');
+    await openCompare(page);
+    await expect(compareRelation(page)).toContainText(/ahead of/);
 
     await page.getByRole('button', { name: 'Swap the two ends of the comparison' }).click();
-    await expect(compareStatus(page)).toHaveText('behind');
+    // A swap is a change of selection, so it waits to be run.
+    await expect(page.getByText('Selection changed')).toBeVisible();
+
+    await compareRun(page).click();
+    await expect(compareRelation(page)).toContainText(/behind/);
   });
 
-  test('says nothing differs when both ends are the same commit', async ({ page }) => {
+  test('says two identical points are the same commit, without a request', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
 
-    // Point base at head.
+    const api = watchApi(page);
+
+    await comparePicker(page, 'head').click();
+    await page
+      .getByRole('dialog', { name: /Choose the head/ })
+      .getByRole('button', { name: /lock background scrolling/ })
+      .click();
     await comparePicker(page, 'base').click();
-    await page.getByRole('button', { name: /lock background scrolling/ }).first().click();
+    await page
+      .getByRole('dialog', { name: /Choose the base/ })
+      .getByRole('button', { name: /lock background scrolling/ })
+      .click();
 
-    await expect(compareStatus(page)).toHaveText('identical');
-    await expect(page.getByText(/the same commit, so nothing differs/)).toBeVisible();
+    await expect(page.getByText('These are the same commit.')).toBeVisible();
+    // No round trip needed to answer it, and nothing to run.
+    await expect(compareRun(page)).toBeDisabled();
+    expect(api.filter((url) => url.includes('/compare'))).toEqual([]);
   });
 
   test('closes the picker with Escape without leaving the view', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
+    await openCompare(page);
 
     await comparePicker(page, 'base').click();
     await expect(page.getByLabel('Filter the base choices')).toBeVisible();
@@ -148,100 +247,197 @@ test.describe('choosing the two ends', () => {
   });
 });
 
-test.describe('leaving a comparison', () => {
-  test('returns to the timeline', async ({ page }) => {
+test.describe('reading a comparison', () => {
+  test('gives one row of figures and three reachable sub-views', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await page.getByRole('slider', { name: /Commit position/ }).fill('12');
+    await page.waitForTimeout(400);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Back to the timeline' }).click();
-    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
-    await expect(page).not.toHaveURL(/base=/);
+    const metrics = page.locator('[class*="metrics"]');
+    await expect(metrics).toContainText('Files changed');
+    await expect(metrics).toContainText('Lines added');
+    await expect(metrics).toContainText('Lines removed');
+    // Three figures, not a wall of them.
+    await expect(metrics.locator('dd')).toHaveCount(3);
+
+    await expect(page.getByRole('tab', { name: /File changes/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[class*="fileItem"]').first()).toBeVisible();
+
+    await page.getByRole('tab', { name: /^Commits/ }).click();
+    await expect(page.getByRole('tabpanel')).toContainText(/Open in Replay/);
+
+    await page.getByRole('tab', { name: 'Repository stats' }).click();
+    await expect(page.getByRole('rowheader', { name: 'Files tracked' })).toBeVisible();
   });
 
-  test('opens a commit from the range on the timeline', async ({ page }) => {
+  test('states the relation in words, from the moving end’s point of view', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
 
-    await page.locator('[class*="commitItem"]').first().click();
-    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2, name: 'Working tree' })).toBeVisible();
-  });
-});
-
-test.describe('a comparison of a live repository', () => {
-  test('uses the GitHub path and links out to the comparison', async ({ page }) => {
-    await openRepo(page, REPOS.medium);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
-    await expect(page.getByText(/ahead|behind|identical|diverged/).first()).toBeVisible();
-  });
-});
-
-test.describe('comparison layout', () => {
-  test('has exactly one H1, naming the comparison', async ({ page }) => {
-    await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/comparing two points/);
-  });
-
-  test('does not overflow sideways at 360px', async ({ page }) => {
-    await page.setViewportSize({ width: 360, height: 780 });
-    await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-
-    // Nor with a picker open, which is the widest thing in the view.
-    await comparePicker(page, 'base').click();
-    await expectNoHorizontalOverflow(page);
-  });
-
-  test('states the relation in words, from head’s point of view', async ({ page }) => {
-    await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(compareStatus(page)).toHaveText('ahead');
-
-    // The two shas as the cards show them, base first on screen.
-    const shas = await page.locator('[class*="endpoint"] [class*="mono"]').allInnerTexts();
-    const [base, head] = shas;
+    const base = (await comparePicker(page, 'base').textContent())!.match(/[0-9a-f]{7}/)![0];
+    const head = (await comparePicker(page, 'head').textContent())!.match(/[0-9a-f]{7}/)![0];
 
     // Head is the subject: it is what moved relative to base.
-    const forward = page.getByText(
-      new RegExp(`^${head} is \\d+ commits? ahead of ${base}\\.`),
+    await expect(compareRelation(page)).toHaveText(
+      new RegExp(`^${head} is \\d+ commits? ahead of ${base}\\.$`),
     );
-    await expect(forward).toBeAttached();
 
     await page.getByRole('button', { name: 'Swap the two ends of the comparison' }).click();
-    await expect(compareStatus(page)).toHaveText('behind');
-    await expect(
-      page.getByText(new RegExp(`^${base} is \\d+ commits? behind ${head}\\.`)),
-    ).toBeAttached();
-  });
+    await compareRun(page).click();
+    await expect(compareRelation(page)).toHaveText(
+      new RegExp(`^${base} is \\d+ commits? behind ${head}\\.$`),
+    );
 
-  test('says two identical points identify the same commit', async ({ page }) => {
-    await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
-
-    await comparePicker(page, 'base').click();
-    await page.getByRole('button', { name: /lock background scrolling/ }).first().click();
-    await expect(compareStatus(page)).toHaveText('identical');
-
-    await expect(page.getByText(/identify the same commit\. No file differs between them\./)).toBeAttached();
-    // The ungrammatical shapes the old template produced.
+    // The ungrammatical shapes an earlier template produced.
     await expect(page.getByText(/is identical of/)).toHaveCount(0);
     await expect(page.getByText(/is behind of/)).toHaveCount(0);
   });
 
   test('appends the file and line totals to the relation', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await compareButton(page).click();
-    await expect(page.getByText('relation')).toBeVisible();
+    await openCompare(page);
     await expect(
       page.getByText(/\d+ files? changed, [\d,]+ lines? added and [\d,]+ removed\./),
-    ).toBeAttached();
+    ).toBeVisible();
+  });
+
+  test('explains an aggregated total instead of passing it off as a net diff', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    // Arriving at the first commit compares the whole range, so a file touched
+    // more than once across it is exactly the case this is about.
+    await openCompare(page);
+    await expect(compareRelation(page)).toContainText(/is 15 commits ahead of/);
+
+    // A file touched more than once across fifteen commits.
+    const aggregated = page.locator('[class*="fileItem"]').filter({ hasText: 'app-shell.tsx' }).first();
+    await aggregated.locator('[class*="fileButton"]').click();
+
+    const note = page.getByText(/changed more than once between the two points/);
+    await expect(note).toBeVisible();
+    await expect(note).toContainText(/totals across those changes/);
+    await expect(note).toContainText(/not the size of the net difference/);
+    // And never reported as "no change".
+    await expect(page.getByText(/no changes/i)).toHaveCount(0);
+  });
+
+  test('says the file-type mix is estimated from extensions', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+    await page.getByRole('tab', { name: 'Repository stats' }).click();
+
+    await expect(page.getByText('estimate from extensions')).toBeVisible();
+    await expect(page.getByText(/not from reading file contents/)).toBeVisible();
+  });
+});
+
+test.describe('leaving a comparison', () => {
+  test('returns to the replay at the same commit', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await page.getByRole('slider', { name: /Commit position/ }).fill('7');
+    await page.waitForTimeout(500);
+
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+
+    await viewTab(page, 'Replay').click();
+    // Choosing endpoints must not have moved the playhead.
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('7');
+    await expect(page).not.toHaveURL(/base=/);
+  });
+
+  test('moves the replay only through an explicit action', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await page.getByRole('slider', { name: /Commit position/ }).fill('7');
+    await page.waitForTimeout(500);
+    await openCompare(page);
+
+    // Changing an endpoint is not a request to move the replay.
+    await comparePicker(page, 'base').click();
+    await page
+      .getByRole('dialog', { name: /Choose the base/ })
+      .getByRole('button', { name: /scaffold the application shell/ })
+      .click();
+    await compareRun(page).click();
+    await expect(compareRelation(page)).toBeVisible();
+
+    await viewTab(page, 'Replay').click();
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('7');
+  });
+
+  test('opens a commit from the range in the replay, when asked to', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+
+    await page.getByRole('tab', { name: /^Commits/ }).click();
+    await page.getByRole('button', { name: 'Open in Replay' }).first().click();
+
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
+    await expect(page.locator('[aria-label="Repository files at this commit"]')).toBeVisible();
+  });
+
+  test('keeps the comparison when returning to it', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    const sentence = await compareRelation(page).textContent();
+
+    await viewTab(page, 'Replay').click();
+    const api = watchApi(page);
+    await viewTab(page, 'Compare').click();
+
+    await expect(compareRelation(page)).toHaveText(sentence ?? '');
+    expect(api.filter((url) => url.includes('/compare')), 'returning must not refetch').toEqual([]);
+  });
+});
+
+test.describe('a comparison of a live repository', () => {
+  test('uses the GitHub path and states the relation', async ({ page }) => {
+    await openRepo(page, REPOS.medium);
+    await openCompare(page);
+    await expect(compareRelation(page)).toContainText(/ahead of|behind|identify the same commit/);
+  });
+});
+
+test.describe('comparison layout', () => {
+  test('has exactly one H1, naming what is open', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Learning Platform');
+  });
+
+  test('stacks the two ends on a narrow screen, with the direction still clear', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await expect(compareRelation(page)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const from = (await comparePicker(page, 'base').boundingBox())!;
+    const to = (await comparePicker(page, 'head').boundingBox())!;
+    // Stacked, and From is still before To.
+    expect(to.y).toBeGreaterThan(from.y);
+
+    // Nor with a picker open, which is the widest thing in the view.
+    await comparePicker(page, 'base').click();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test('a shared link opens the compare view directly', async ({ page }) => {
+    await page.goto(repoUrl(REPOS.demo));
+    await openCompare(page);
+    // Only a comparison that has actually run is in the URL, so wait for it.
+    await expect(compareRelation(page)).toBeVisible();
+    const shared = page.url();
+    expect(shared).toMatch(/base=/);
+
+    await page.goto(shared);
+    await expect(page.getByRole('tab', { name: 'Compare', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 });

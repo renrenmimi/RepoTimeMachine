@@ -1,349 +1,258 @@
+/*
+ * The player.
+ *
+ * One 40px control row and a thin track underneath, so the whole thing costs
+ * about 78px and the repository it controls stays on screen with it.
+ */
+
 .transport {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-/* ------------------------------------------------------------------ buttons */
-
-.buttons {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-}
-
-.button {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  background: var(--surface-panel);
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
-}
-
-.button:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  color: var(--text-bright);
-  background: var(--surface-hover);
-}
-
-.button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.play {
-  width: 44px;
-  height: 34px;
-  border-color: var(--signal-dim);
-  color: var(--signal);
-  background: var(--signal-wash);
-}
-
-.play:hover:not(:disabled) {
-  border-color: var(--signal);
-  color: var(--signal-bright);
-  background: var(--signal-wash-strong);
-}
-
-/* ----------------------------------------------------------------- readout */
-
-.readout {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-width: 0;
-  flex: 1 1 auto;
 }
 
-.position {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-bright);
-  white-space: nowrap;
+.step {
+  composes: iconButton from './controls.module.css';
 }
 
-.readoutDate {
+/* The play control carries a word: a small triangle alone is not an entry point. */
+.play {
+  composes: buttonPrimary from './controls.module.css';
+  min-width: 92px;
+  padding: 0 var(--space-3);
+}
+
+.playLabel {
+  font-variant-numeric: tabular-nums;
+}
+
+.latest {
+  composes: button from './controls.module.css';
+  /* Part of the control cluster, not adrift in the middle of the row. */
+  margin-left: var(--space-3);
+  height: 32px;
+  padding: 0 var(--space-3);
   font-size: var(--text-xs);
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-
-/* ------------------------------------------------------------------- speed */
 
 .speed {
   display: flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
 }
 
 .speedLabel {
-  margin-right: var(--space-1);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  color: var(--text-faint);
+  padding: 0 var(--space-1) 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  color: var(--text-secondary);
 }
 
 .speedButton {
-  padding: 2px var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  color: var(--text-secondary);
+  transition: background-color var(--duration) var(--ease-out), color var(--duration) var(--ease-out);
 }
 
 .speedButton:hover:not(:disabled) {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .speedButton[data-active] {
-  border-color: var(--signal-dim);
-  color: var(--signal);
-  background: var(--signal-wash);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .speedButton:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  color: var(--text-muted);
 }
 
-/* ------------------------------------------------------------------- track */
+/* -------------------------------------------------------------------- track */
 
 .trackArea {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   min-width: 0;
 }
 
-.milestoneRow {
-  position: relative;
-  height: 10px;
-}
-
-.milestoneMark {
-  position: absolute;
-  bottom: 0;
-  width: 2px;
-  height: 8px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--amber);
-  opacity: 0.75;
-  transition: opacity var(--duration-fast) var(--ease-out), height var(--duration-fast) var(--ease-out);
-}
-
-.milestoneMark[data-approximate] {
-  background: var(--amber-dim);
-  opacity: 0.6;
-  height: 5px;
-}
-
-.milestoneMark:hover {
-  opacity: 1;
-  height: 10px;
-}
-
+/*
+ * The bar looks like a hairline but is 16px of pointer target: the range input
+ * covers the whole strip, invisible, so dragging works anywhere along it.
+ */
 .track {
   position: relative;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-inset);
-  border: 1px solid var(--line-faint);
-  overflow: hidden;
+  height: 16px;
+  min-width: 0;
+}
+
+.track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-subtle);
 }
 
 .ticks {
   position: absolute;
-  inset: 0;
+  inset: 2px 0;
   width: 100%;
-  height: 100%;
-  shape-rendering: crispEdges;
-}
-
-.baseline {
-  stroke: var(--line);
-  stroke-width: 1;
+  height: 12px;
 }
 
 .tick {
-  stroke: var(--line-strong);
+  stroke: var(--chart-grid);
   stroke-width: 1;
 }
 
 .progress {
   position: absolute;
-  inset: 0 auto 0 0;
-  background: linear-gradient(90deg, rgba(123, 203, 141, 0.05), rgba(123, 203, 141, 0.16));
-  border-right: 1px solid var(--signal-dim);
-  transition: width var(--duration-instant) linear;
-  pointer-events: none;
+  left: 0;
+  top: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--action-bg);
+  transition: width var(--duration) var(--ease-out);
 }
 
 .playhead {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  transition: left var(--duration-instant) linear;
-  pointer-events: none;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 999px;
+  border: 2px solid var(--bg-surface);
+  background: var(--action-bg);
+  transition: left var(--duration) var(--ease-out);
 }
 
-.playheadStem {
+/* Milestones are a small tick above the line, not a row of coloured badges. */
+.milestoneMark {
   position: absolute;
   top: 0;
-  bottom: 0;
-  left: -1px;
   width: 2px;
-  background: var(--amber);
-}
-
-.playheadKnob {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 9px;
-  height: 9px;
-  transform: translate(-50%, -50%) rotate(45deg);
-  background: var(--amber-bright);
+  height: 5px;
+  margin-left: -1px;
   border-radius: 1px;
+  background: var(--text-secondary);
 }
 
-/*
- * A real range input sits transparently over the drawn track: it brings
- * keyboard support, touch dragging and assistive-technology semantics for free.
- */
+.milestoneMark[data-approximate] {
+  background: var(--warning-text);
+  opacity: 0.7;
+}
+
 .range {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   margin: 0;
-  opacity: 0;
-  cursor: ew-resize;
-  -webkit-appearance: none;
   appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 16px;
   background: transparent;
 }
 
 .range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 26px;
-  height: 26px;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+}
+
+.range::-moz-range-track {
+  height: 16px;
+  background: transparent;
 }
 
 .range::-moz-range-thumb {
-  width: 26px;
-  height: 26px;
+  width: 16px;
+  height: 16px;
   border: none;
+  background: transparent;
 }
 
-.range:disabled {
-  cursor: not-allowed;
-}
-
-.track:focus-within {
-  border-color: var(--signal);
-  outline: 2px solid var(--signal);
+.range:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+  border-radius: 4px;
 }
-
-/* ------------------------------------------------------------------- scale */
 
 .scale {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--space-3);
-  font-size: var(--text-3xs);
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: 16px;
+  color: var(--text-muted);
 }
 
 .rangeLabel {
   flex: 1;
+  min-width: 0;
   text-align: center;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-@media (max-width: 620px) {
-  .transport {
-    padding: var(--space-2) var(--space-3);
-    gap: var(--space-1);
-  }
+.singleNote {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
 
-  .row {
-    gap: var(--space-2);
-  }
+/* ---------------------------------------------------------------- responsive */
 
-  .button {
-    width: 30px;
-    height: 30px;
-  }
-
-  .play {
-    width: 40px;
-    height: 30px;
-  }
-
-  .speed {
-    order: 3;
-    width: 100%;
-    justify-content: flex-start;
-    gap: 0;
-  }
-
+@media (max-width: 1099px) {
   .speedLabel {
     display: none;
   }
+}
 
-  .speedButton {
-    padding: 2px var(--space-3);
+@media (max-width: 767px) {
+  .row {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
   }
 
-  .readout {
-    justify-content: flex-end;
-    flex: 1 1 0;
-  }
-
-  .milestoneRow {
-    height: 7px;
-  }
-
-  .milestoneMark {
-    height: 6px;
-  }
-
-  .track {
-    height: 22px;
+  .speed {
+    order: 5;
+    margin-left: 0;
   }
 
   .scale > span:first-child,
   .scale > span:last-child {
+    /* On a phone the two end dates would squeeze the honest range label out. */
     display: none;
   }
 

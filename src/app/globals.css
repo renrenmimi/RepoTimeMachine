@@ -13,21 +13,19 @@ body {
 }
 
 html {
-  background: var(--surface-void);
+  background: var(--bg-page);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--surface-base);
-  color: var(--text);
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  line-height: 1.5;
+  line-height: 1.55;
   font-synthesis-weight: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* The layout is column-based everywhere; nothing may spill sideways. */
-  overflow-x: hidden;
 }
 
 h1,
@@ -37,7 +35,9 @@ h4,
 p,
 figure,
 ul,
-ol {
+ol,
+dl,
+dd {
   margin: 0;
 }
 
@@ -48,13 +48,13 @@ ol {
 }
 
 a {
-  color: var(--signal);
-  text-decoration-color: color-mix(in srgb, var(--signal) 40%, transparent);
+  color: var(--text-accent);
+  text-decoration-color: color-mix(in srgb, var(--text-accent) 45%, transparent);
   text-underline-offset: 0.2em;
 }
 
 a:hover {
-  color: var(--signal-bright);
+  text-decoration-color: currentcolor;
 }
 
 button {
@@ -66,8 +66,13 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+}
+
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -76,26 +81,26 @@ svg {
   display: block;
 }
 
+/* The ring is its own colour and never sits under a shadow. */
 :focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
 }
 
 ::selection {
-  background: var(--signal-wash-strong);
-  color: var(--text-bright);
+  background: var(--bg-selected);
+  color: var(--text-primary);
 }
 
-/* Scrollbars styled to disappear into the instrument. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-color: var(--border-control) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 
 *::-webkit-scrollbar-track {
@@ -103,14 +108,14 @@ svg {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: var(--border-control);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--line-strong);
+  background: var(--text-muted);
   background-clip: content-box;
 }
 

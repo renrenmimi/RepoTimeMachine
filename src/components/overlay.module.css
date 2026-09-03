@@ -1,0 +1,99 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay);
+  cursor: default;
+}
+
+.surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.scrim[data-variant='dialog'] {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.scrim[data-variant='dialog'] .surface {
+  width: min(640px, 100%);
+  max-height: min(720px, calc(100dvh - 2 * var(--space-4)));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+}
+
+.scrim[data-variant='drawer'] {
+  align-items: stretch;
+}
+
+.scrim[data-variant='drawer'] .surface {
+  width: min(360px, 92vw);
+  height: 100dvh;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 26px;
+  color: var(--text-primary);
+}
+
+.close {
+  composes: buttonQuiet from './controls.module.css';
+  flex-shrink: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The surface arrives; it does not glide across the screen. */
+.surface {
+  animation: overlay-in var(--duration) var(--ease-out);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface {
+    animation: none;
+  }
+}

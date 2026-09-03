@@ -21,6 +21,7 @@ function setup(overrides: Partial<Parameters<typeof ComparePicker>[0]> = {}) {
       side="base"
       commits={range}
       tags={tags}
+      tagsStatus="ready"
       selected={null}
       selectedLabel={null}
       onPick={onPick}
@@ -30,8 +31,16 @@ function setup(overrides: Partial<Parameters<typeof ComparePicker>[0]> = {}) {
   return { onPick };
 }
 
+/**
+ * The trigger, by the plain-language name it now carries.
+ *
+ * The Git word is still on the control, in small print, which is why matching
+ * on it keeps working — but `From` is what a visitor reads.
+ */
+const trigger = () => screen.getByRole('button', { name: /^From/ });
+
 const open = async () => {
-  await userEvent.click(screen.getByRole('button', { name: /base/i }));
+  await userEvent.click(trigger());
 };
 
 /** The chosen option, by the attribute the stylesheet keys off. */
@@ -79,19 +88,27 @@ describe('ComparePicker selection', () => {
     expect(selectedOptions()).toHaveLength(0);
   });
 
-  it('shows the tag name on the button when one was chosen', () => {
+  it('shows the tag name on the trigger when one was chosen', () => {
     setup({ selected: range[4]!.sha, selectedLabel: 'v1.0.0' });
-    expect(screen.getByRole('button', { name: /base/i })).toHaveTextContent('v1.0.0');
+    expect(trigger()).toHaveTextContent('v1.0.0');
   });
 
-  it('falls back to the abbreviated sha when no tag labels the choice', () => {
+  it('shows the commit subject, sha and date when a commit was chosen', () => {
     setup({ selected: range[2]!.sha });
-    expect(screen.getByRole('button', { name: /base/i })).toHaveTextContent(range[2]!.sha.slice(0, 7));
+    expect(trigger()).toHaveTextContent(range[2]!.subject);
+    expect(trigger()).toHaveTextContent(range[2]!.sha.slice(0, 7));
+  });
+
+  it('names both the plain-language side and the Git term', () => {
+    setup({ selected: null });
+    expect(trigger()).toHaveTextContent('From');
+    // The Git vocabulary is present as a hint, not as the label.
+    expect(trigger()).toHaveTextContent('base');
   });
 
   it('says nothing is chosen when nothing is', () => {
     setup({ selected: null });
-    expect(screen.getByRole('button', { name: /base/i })).toHaveTextContent('choose');
+    expect(trigger()).toHaveTextContent('Choose a commit or tag');
   });
 });
 
@@ -183,7 +200,7 @@ describe('ComparePicker dismissal', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    const button = screen.getByRole('button', { name: /base/i });
+    const button = trigger();
     button.focus();
     expect(button).toHaveFocus();
   });
@@ -224,18 +241,51 @@ describe('ComparePicker labelling', () => {
         side="head"
         commits={range}
         tags={tags}
+        tagsStatus="ready"
         selected={null}
         selectedLabel={null}
         onPick={vi.fn()}
       />,
     );
 
-    const button = screen.getByRole('button', { name: /head/i });
+    const button = screen.getByRole('button', { name: /^To/ });
     expect(button).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(button);
 
     expect(button).toHaveAttribute('aria-expanded', 'true');
     const dialog = screen.getByRole('dialog', { name: /choose the head of the comparison/i });
     expect(within(dialog).getByLabelText('Filter the head choices')).toBeInTheDocument();
+  });
+});
+
+describe('ComparePicker tag status', () => {
+  it('says the tag list is loading rather than that there are none', async () => {
+    setup({ tags: [], tagsStatus: 'loading' });
+    await open();
+    expect(screen.getByText(/Loading tags/)).toBeInTheDocument();
+    expect(screen.queryByText(/has no tags/)).not.toBeInTheDocument();
+  });
+
+  it('distinguishes a failed tag request from a repository with no tags', async () => {
+    setup({ tags: [], tagsStatus: 'error' });
+    await open();
+    expect(screen.getByText(/tag list could not be loaded/)).toBeInTheDocument();
+    expect(screen.queryByText(/has no tags/)).not.toBeInTheDocument();
+    // Commits are a separate request, so they are still offered.
+    expect(screen.getByRole('button', { name: new RegExp(range[3]!.subject) })).toBeInTheDocument();
+  });
+
+  it('says there are none only once the list has actually arrived', async () => {
+    setup({ tags: [], tagsStatus: 'ready' });
+    await open();
+    expect(screen.getByText(/no tags pointing inside the loaded range/)).toBeInTheDocument();
+  });
+
+  it('calls a tag a tag, not a release', async () => {
+    setup();
+    await open();
+    const option = screen.getByRole('button', { name: /^v1\.0\.0/ });
+    expect(option).toHaveTextContent('tag');
+    expect(option).not.toHaveTextContent(/release/i);
   });
 });

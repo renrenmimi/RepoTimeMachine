@@ -38,8 +38,17 @@ test.describe('reduced motion', () => {
 
     const marker = page.locator('[role="treeitem"][data-status] [class*="marker"]').first();
     await expect(marker).toBeAttached();
-    const duration = await marker.evaluate((el) => getComputedStyle(el).animationDuration);
-    expect(['1ms', '0.001s', '0s']).toContain(duration);
+    const animation = await marker.evaluate((el) => getComputedStyle(el).animationName);
+    // Switched off outright, not merely shortened.
+    expect(animation).toBe('none');
+  });
+
+  test('the marker still says what changed, without the animation', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('15');
+    await page.waitForTimeout(400);
+    // Reduced motion removes the transition, not the information.
+    await expect(page.getByText(/(added|modified|deleted|renamed) in this commit/).first()).toBeAttached();
   });
 
   test('playback still works, and still steps one commit at a time', async ({ page }) => {
