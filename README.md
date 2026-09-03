@@ -5,8 +5,8 @@ changed, and compare any two points.
 
 There are two ways in:
 
-- **the built-in demo** — a curated sixteen-commit history that needs no GitHub
-  account and makes no GitHub requests;
+- **the built-in demo** — a curated sixteen-commit history with real diffs, that
+  needs no GitHub account and makes no GitHub requests;
 - **any public GitHub repository** — paste `owner/repository` or a URL and it
   reads the default branch through GitHub's REST API.
 
@@ -44,6 +44,15 @@ selected commit, the player, and one of two sub-views — `Repository` for the
 file tree as it stood there, `Changes` for the diff. Both sub-views sit under the
 same heading and the same player, so moving between them never loses your place.
 
+Leaving `Replay` for `Compare` or `Insights` and coming back does not lose it
+either: the commit, the sub-view, the path filter, the expanded diff and the
+scroll position all survive the trip, because they live in the shell rather than
+in the view that unmounts.
+
+Diffs read as a unified patch by default, with an optional two-column view on a
+wide desktop. Narrow screens are always unified — two columns of code at 390px is
+worse than one.
+
 Arriving on a repository puts the playhead on the **earliest commit in the loaded
 range**, paused. Stepping forward from the start is the point of the tool;
 arriving at the finished repository shows a result instead. A link that names a
@@ -70,16 +79,54 @@ product might plausibly grow: a shell, then design tokens, then models, lessons,
 practice, a coding workspace, learning paths, a dashboard, and finally a pass for
 responsive layout and accessibility.
 
-It is **synthetic**. The commits, authors, object ids, file paths and diffs are
-invented; nothing is copied from, or reproduces, any real repository. It exists so
-the tool can demonstrate itself without reading anybody's account.
+It is **synthetic**. The commits, authors, object ids, file paths and file
+contents are invented; nothing is copied from, or reproduces, any real
+repository. It exists so the tool can demonstrate itself without reading
+anybody's account.
 
 Because it ships with the application:
 
 - it makes **zero GitHub requests** and needs no token;
 - it is identical for every visitor, so a shared link always shows the same thing;
 - every position in the replay is **exact**, because a full tree is stored for all
-  sixteen commits.
+  sixteen commits;
+- every ordinary text file opens on a **real unified diff**, because the fixture
+  stores file *content* and the diffs are computed from it.
+
+### The fixture stores content, not diffs
+
+Each commit in the fixture lists file operations — `add`, `mod`, `del`, `ren` —
+carrying the file's full text at that commit. Nothing about a change is written
+down twice:
+
+| Shown in the interface | Where it comes from |
+| --- | --- |
+| The unified diff | `diffText(previousText, newText)` |
+| `+n` / `−n` on a file | Counted from the hunks that diff emitted |
+| Repository totals | Summed from the same per-file numbers |
+| File size | The byte length of the stored text |
+| Object id | A hash of the stored text |
+| Compare's net diff | `diffText` between the two commits' stored texts |
+
+That is the whole point of the arrangement. An earlier version stored
+hand-written hunks next to hand-written line counts, and most files had no hunk
+at all — so expanding one reached *"this source did not provide a diff for this
+file"*, which is an honest message for a live repository that withheld a patch
+but a dead end in the application's own demo. Deriving everything from one
+source of truth means a count cannot describe a change other than the one on
+screen, and there is no file whose diff was simply never written.
+
+Two files deliberately carry no content: `package-lock.json` and
+`public/generated/search-index.json`. Their rows are marked `generated` **before**
+you expand them, expanding explains why the content is not carried, and the panel
+says their line counts are *declared* rather than measured from a diff. They are
+the only rows in the demo that do not open on a patch, and they never look
+viewable first.
+
+The diff implementation is [`src/lib/diff/unified.ts`](src/lib/diff/unified.ts):
+a longest-common-subsequence edit script with common prefix and suffix trimmed,
+three lines of context, and `diff -U3` hunk headers. It is about three hundred
+lines and has no dependencies.
 
 The interface says which mode you are in, in one place, under the repository's
 name. Built-in data reads `Built-in demo · 0 GitHub requests`, the GitHub usage
@@ -245,17 +292,29 @@ two trees rather than replayed from diffs, which stays exact however many times 
 file was touched in between. Where a tree is missing at one end it falls back to
 the loaded diffs and says the file list is incomplete.
 
+For the built-in demo specifically, the file *contents* are known at both ends
+too, so each row's patch is `diffText(baseText, headText)` — the true net diff
+between those two points, not a diff borrowed from one commit in between. All
+256 ordered pairs of the sixteen commits (every pair in both directions, plus
+each commit against itself) are checked in
+[`tests/builtin-demo-diffs.test.ts`](tests/builtin-demo-diffs.test.ts): every
+one agrees with the trees it is comparing, and none of them falls back.
+
 ### What it does not do
 
 There is no generated summary of a comparison. Every number is counted from a
 tree or a diff, and anything that cannot be counted says so instead of being
 estimated into a sentence.
 
-One consequence is worth stating plainly: a diff is only attached to a net change
-when exactly one recorded hunk **is** that change. If a file was touched more
-than once between the two points, no single hunk describes the difference, so the
-file reports `changed more than once` and shows only the summed line counts.
-Showing one commit's hunk as the whole change would be wrong.
+One consequence is worth stating plainly, for the case where only diffs are
+available: a diff is only attached to a net change when exactly one recorded hunk
+**is** that change. If a file was touched more than once between the two points,
+no single hunk describes the difference, so the file reports `changed more than
+once` and shows only the summed line counts. Showing one commit's hunk as the
+whole change would be wrong.
+
+This never happens in the built-in demo, because content is known at both ends
+and the net diff is computed rather than borrowed.
 
 ## Sharing and the address bar
 
@@ -563,15 +622,22 @@ from its position in the current ranking.
   position, and return focus to whatever opened them.
 - Playback shortcuts belong to the replay: they stand down in another view, while
   a text field has focus, and while a modal is open.
-- Contrast is measured rather than eyeballed. Every text role was checked against
-  every surface it is used on, in both themes: 24 pairs, all at or above 4.5:1
-  for text and 3:1 for controls, borders, focus rings and chart strokes. The
-  tightest is the control border at 3.11:1 against the page.
+- Contrast is measured rather than eyeballed, and asserted rather than measured
+  once. [`tests/contrast.test.ts`](tests/contrast.test.ts) reads the shipped
+  stylesheet, composites any translucent value over its backdrop, and checks
+  every text role against every surface it is used on: **54 pairs per theme, 108
+  in all**, at or above 4.5:1 for text and 3:1 for borders, focus rings, chart
+  strokes and categorical dots. The tightest are removed-line red on its own tint
+  at 4.51:1 in light, and muted text on the selected row at 4.71:1 in dark. The
+  same file asserts that both themes declare the same token names and that the
+  `prefers-color-scheme` fallback is value-for-value identical to the explicit
+  dark theme, so nobody gets two different dark palettes.
 - Controls are 40px tall, 44px where the pointer is coarse.
 - Text sizes stop at 12px. Limitations are never delegated to smaller type.
-- No horizontal scrolling at 1440, 1280, 1024, 390 or 360px, checked by an
-  assertion rather than by eye. Only a diff box and the comparison's statistics
-  table scroll sideways, and each does so within its own named container.
+- No horizontal scrolling at 1440, 1280, 1024, 390 or 360px, in either theme,
+  checked by an assertion rather than by eye. Only a diff box and the
+  comparison's statistics table scroll sideways, and each does so within its own
+  named container.
 
 ### Themes
 
@@ -590,7 +656,7 @@ Explicit goals, and how they are met:
 | Goal | How |
 | --- | --- |
 | The shell paints before any GitHub data | The page is static; the client reads the address bar in an effect and fetches after mount. An e2e test asserts zero API calls on the landing screen. |
-| No thousands of DOM nodes | Both the file tree (34px rows) and the commit history (64px rows) are virtualised at a fixed row height, with a `maxRows` ceiling on the tree. Row heights are fixed in the stylesheet and matched by the measurement, so a subject that would wrap is truncated with the full text in the heading rather than left to desynchronise the arithmetic. |
+| No thousands of DOM nodes | Both the file tree (34px rows) and the commit history (80px rows) are virtualised at a fixed row height, with a `maxRows` ceiling on the tree. Row heights are fixed in the stylesheet and matched by the measurement, so a subject that would wrap is truncated with the full text in the heading rather than left to desynchronise the arithmetic. |
 | No repeated fetching | LRU plus in-flight de-duplication in the browser, plus the Next.js data cache on the server. Trees GitHub refused are remembered so they are not retried. |
 | Sequential playback stays cheap | Tree projections are cached per commit index and each step reuses the previous one, so stepping forward is O(1) amortised rather than replaying the whole range. |
 | No blocking work every frame | Playback is one `setInterval` tick per commit (850ms at 1×, floored at 90ms at 8×). Scroll handlers coalesce into one state update per frame. |
@@ -661,6 +727,34 @@ building or serving it. A second suite pins the routing: the demo never reaches
 not-found path, and the test fixtures are unreachable unless `RTM_FIXTURE_MODE` is
 explicitly set.
 
+[`tests/builtin-demo-diffs.test.ts`](tests/builtin-demo-diffs.test.ts) is the one
+that keeps the demo's diffs honest, and it checks the fixture the way a reader
+would check it:
+
+- for each of the sixteen commits, the changed-file list, each file's status, its
+  `+`/`−` counts, its patch, its size and its object id all agree with the stored
+  content, and the commit's totals are the sum of its files;
+- **applying every patch in order reconstructs every tree**, so a patch that
+  described a change the tree does not contain would fail;
+- across the sixteen commits, **121 changed files open on a real unified diff**
+  and 3 are the withheld generated ones, which say so both before and after they
+  are expanded — no row reaches a generic failure state, and the reason
+  `not-provided` never appears in the demo at all;
+- all 256 ordered pairs of commits compare correctly — totals matching the two
+  trees, per-file patches matching the two contents, and a reversed pair swapping
+  base, head, additions and deletions;
+- the whole of the above runs again with `globalThis.fetch` replaced by a throw,
+  which is the strongest available proof that serving the demo makes no request;
+- an import-graph walk from the demo provider proves `src/lib/github/` is not
+  reachable from it at all, so the GitHub adapter cannot be called even by
+  accident.
+
+[`tests/diff.test.ts`](tests/diff.test.ts) covers the diff engine underneath it:
+context windows, hunk merging and splitting, creation and deletion, the
+single-line header form, lines that look like diff syntax, stability, and a
+200-seed property test that applies each generated patch back onto its input and
+requires the result to equal the target.
+
 ### End-to-end (Playwright)
 
 Playwright runs against a **real production build**. `RTM_FIXTURE_MODE=1` makes
@@ -674,6 +768,15 @@ Three projects: desktop, a Pixel 7 for the narrow layout, and a browser reportin
 `prefers-reduced-motion: reduce`. Most specs run against the built-in demo; the
 synthetic fixture repositories are used where a test is specifically about the
 live GitHub path.
+
+Beyond the happy path, the suite walks the route a first-time visitor takes and
+asserts the things that were actually broken before: that opening
+`next.config.ts` and `app/layout.tsx` shows a patch rather than an apology, that
+no expandable row in five consecutive commits dead-ends, that the two-column diff
+appears at 1280px and not at 1279px, that expanding the milestone list does not
+move the page under the reader, that leaving `Replay` and coming back preserves
+every part of its state, and that opening the narrow-screen history drawer while
+scrolled restores the exact scroll position on close.
 
 ### Fixtures
 
