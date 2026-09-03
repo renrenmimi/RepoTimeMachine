@@ -1,12 +1,35 @@
 import { expect, test } from '@playwright/test';
-import { builtinBadge, commitSubject, currentIndex, openRepo, REPOS, repoUrl, transport } from './helpers';
+import type { Page } from '@playwright/test';
+import {
+  builtinBadge,
+  commitSubject,
+  currentIndex,
+  openCompare,
+  openRepo,
+  REPOS,
+  repoUrl,
+  subTab,
+  globalAction,
+  playableRange,
+  transport,
+  viewTab,
+} from './helpers';
+
+/** Moves focus off every control without clicking anything. */
+async function focusDocument(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    document.body.setAttribute('tabindex', '-1');
+    document.body.focus();
+    document.body.removeAttribute('tabindex');
+  });
+}
 
 test.describe('playback', () => {
   test('plays forward from the beginning and can be paused at any point', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     const t = transport(page);
 
-    // Pressing play at the newest commit rewinds to the start of the range.
     await t.play.click();
     await expect(t.pause).toBeVisible();
     await expect.poll(() => currentIndex(page), { timeout: 8000 }).toBeGreaterThan(1);
@@ -32,7 +55,7 @@ test.describe('playback', () => {
     await expect.poll(() => currentIndex(page), { timeout: 8000 }).toBeGreaterThan(paused);
   });
 
-  test('changing speed does not reset the timeline', async ({ page }) => {
+  test('changing speed does not reset the position or start playing', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     const t = transport(page);
 
@@ -42,8 +65,6 @@ test.describe('playback', () => {
     await page.getByRole('button', { name: /^4/ }).click();
     expect(await currentIndex(page)).toBe(9);
     await expect(page.getByRole('button', { name: /^4/ })).toHaveAttribute('aria-pressed', 'true');
-
-    // And it does not start playback either.
     await expect(t.play).toBeVisible();
   });
 
@@ -62,16 +83,20 @@ test.describe('playback', () => {
     await expect.poll(() => currentIndex(page), { timeout: 6000 }).toBeGreaterThan(before + 2);
   });
 
-  test('stops at the end instead of looping', async ({ page }) => {
+  test('stops at the end and offers a replay rather than a dead button', async ({ page }) => {
     await openRepo(page, REPOS.tiny);
     const t = transport(page);
 
     await page.getByRole('button', { name: /^8/ }).click();
     await t.play.click();
     await expect.poll(() => currentIndex(page), { timeout: 8000 }).toBe(4);
-    await expect(t.play).toBeVisible();
     await page.waitForTimeout(800);
     expect(await currentIndex(page)).toBe(4);
+
+    // Explained rather than disabled: pressing it starts again from the top.
+    await expect(t.replay).toBeEnabled();
+    await t.replay.click();
+    await expect.poll(() => currentIndex(page), { timeout: 4000 }).toBeLessThan(3);
   });
 
   test('steps one commit at a time', async ({ page }) => {
@@ -96,12 +121,58 @@ test.describe('playback', () => {
       await page.waitForTimeout(200);
     }
   });
+
+  test('the history list follows the playhead', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('13');
+    await page.waitForTimeout(600);
+
+    const current = page.locator('[aria-current="true"]');
+    await expect(current).toHaveCount(1);
+    await expect(current).toContainText(await commitSubject(page).innerText());
+  });
+});
+
+test.describe('pausing to read', () => {
+  test('opening a diff stops the clock', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await page.waitForTimeout(1500);
+    await subTab(page, 'Changes').click();
+
+    await transport(page).play.click();
+    await expect(transport(page).pause).toBeVisible();
+
+    await page.locator('[class*="fileButton"]').first().click();
+    // Evidence must not move out from under the reader.
+    await expect(transport(page).play).toBeVisible();
+    const at = await currentIndex(page);
+    await page.waitForTimeout(1200);
+    expect(await currentIndex(page)).toBe(at);
+  });
+
+  test('leaving the replay stops the clock and keeps the place', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await transport(page).slider.fill('6');
+    await page.getByRole('button', { name: /^4/ }).click();
+    await transport(page).play.click();
+    await expect(transport(page).pause).toBeVisible();
+
+    await viewTab(page, 'Insights').click();
+    await page.waitForTimeout(1200);
+    await viewTab(page, 'Replay').click();
+
+    // Paused, at the commit it was on, at the speed it was set to.
+    await expect(transport(page).play).toBeVisible();
+    expect(await currentIndex(page)).toBeGreaterThanOrEqual(6);
+    expect(await currentIndex(page)).toBeLessThan(10);
+    await expect(page.getByRole('button', { name: /^4/ })).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 test.describe('keyboard control', () => {
   test('space toggles playback', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await page.locator('body').click({ position: { x: 5, y: 200 } });
+    await focusDocument(page);
 
     await page.keyboard.press('Space');
     await expect(transport(page).pause).toBeVisible();
@@ -112,7 +183,7 @@ test.describe('keyboard control', () => {
   test('arrows step, shift-arrows jump, Home and End go to the ends', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await transport(page).slider.fill('12');
-    await page.locator('body').click({ position: { x: 5, y: 200 } });
+    await focusDocument(page);
 
     await page.keyboard.press('ArrowLeft');
     expect(await currentIndex(page)).toBe(11);
@@ -132,7 +203,7 @@ test.describe('keyboard control', () => {
 
   test('brackets change the speed', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await page.locator('body').click({ position: { x: 5, y: 200 } });
+    await focusDocument(page);
 
     await page.keyboard.press(']');
     await expect(page.getByRole('button', { name: /^2/ })).toHaveAttribute('aria-pressed', 'true');
@@ -142,7 +213,7 @@ test.describe('keyboard control', () => {
 
   test('slash focuses the path filter', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await page.locator('body').click({ position: { x: 5, y: 200 } });
+    await focusDocument(page);
     await page.keyboard.press('/');
     await expect(page.getByLabel('Filter file paths in the tree')).toBeFocused();
   });
@@ -151,8 +222,30 @@ test.describe('keyboard control', () => {
     await openRepo(page, REPOS.demo);
     const filter = page.getByLabel('Filter file paths in the tree');
     await filter.click();
-    await filter.type('page k');
+    await filter.fill('page k');
     await expect(filter).toHaveValue('page k');
+    await expect(transport(page).play).toBeVisible();
+  });
+
+  test('shortcuts belong to the replay and to nothing on top of it', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await openCompare(page);
+    await focusDocument(page);
+
+    // Space here must not start a player that is not on screen.
+    await page.keyboard.press('Space');
+    await viewTab(page, 'Replay').click();
+    await expect(transport(page).play).toBeVisible();
+  });
+
+  test('a modal swallows the shortcuts underneath it', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await globalAction(page, 'How it works');
+    await expect(page.getByRole('dialog', { name: 'How it works' })).toBeVisible();
+
+    await page.keyboard.press('Space');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(transport(page).play).toBeVisible();
   });
 
@@ -191,18 +284,46 @@ test.describe('URL and history', () => {
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('4');
   });
 
-  test('Back and Forward move between repositories', async ({ page }) => {
-    await openRepo(page, REPOS.tiny);
-    await expect(page.getByText('full history — 5 commits')).toBeVisible();
+  test('the view is part of the shared state', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await viewTab(page, 'Insights').click();
+    await expect(page).toHaveURL(/view=insights/);
 
-    await page.getByRole('button', { name: /Built-in demo/ }).first().click();
-    await expect(page.getByText('full history — 16 commits')).toBeVisible();
+    const shared = page.url();
+    await page.goto(shared);
+    await expect(viewTab(page, 'Insights')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('an unknown view falls back to the replay', async ({ page }) => {
+    await page.goto(`/?repo=${encodeURIComponent(REPOS.demo)}&view=dashboard`);
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
+    await expect(viewTab(page, 'Replay')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('Back and Forward move between views', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await viewTab(page, 'Insights').click();
+    await expect(page).toHaveURL(/view=insights/);
 
     await page.goBack();
-    await expect(page.getByText('full history — 5 commits')).toBeVisible();
+    await expect(viewTab(page, 'Replay')).toHaveAttribute('aria-selected', 'true');
+    await page.goForward();
+    await expect(viewTab(page, 'Insights')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('Back and Forward move between repositories', async ({ page }) => {
+    await openRepo(page, REPOS.tiny);
+    await expect(playableRange(page)).toHaveText('the whole history, 5 commits');
+
+    await globalAction(page, 'Change repository');
+    await page.getByRole('button', { name: /Explore the built-in demo instead/ }).click();
+    await expect(playableRange(page)).toHaveText('the whole history, 16 commits');
+
+    await page.goBack();
+    await expect(playableRange(page)).toHaveText('the whole history, 5 commits');
 
     await page.goForward();
-    await expect(page.getByText('full history — 16 commits')).toBeVisible();
+    await expect(playableRange(page)).toHaveText('the whole history, 16 commits');
   });
 
   test('Back returns to the commit a jump started from', async ({ page }) => {
@@ -210,10 +331,12 @@ test.describe('URL and history', () => {
     await transport(page).slider.fill('11');
     await page.waitForTimeout(400);
 
-    await page.getByRole('tab', { name: 'Milestones' }).click();
-    await page.getByRole('button', { name: /Initial commit/ }).first().click();
+    await viewTab(page, 'Insights').click();
+    await page.getByRole('button', { name: 'Inspect commit' }).first().click();
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('0');
 
+    await page.goBack();
+    await expect(viewTab(page, 'Insights')).toHaveAttribute('aria-selected', 'true');
     await page.goBack();
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('11');
   });
@@ -235,31 +358,37 @@ test.describe('URL and history', () => {
   test('an invalid commit in the URL still loads the repository', async ({ page }) => {
     await page.goto(`/?repo=${encodeURIComponent(REPOS.demo)}&c=zzzz`);
     await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
-    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('15');
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('0');
   });
 });
 
 test.describe('switching repositories', () => {
-  test('replaces the timeline rather than mixing two histories', async ({ page }) => {
+  test('replaces the history rather than mixing two', async ({ page }) => {
     await openRepo(page, REPOS.demo);
-    await expect(page.getByText('full history — 16 commits')).toBeVisible();
+    await expect(playableRange(page)).toHaveText('the whole history, 16 commits');
+    await page.getByRole('button', { name: 'Latest' }).click();
+    await page.waitForTimeout(800);
+    // Through the filter: the tree is virtualised, so a path further down the
+    // list is genuinely not rendered until it is asked for.
+    await page.getByLabel('Filter file paths in the tree').fill('scroll-lock');
     await expect(page.getByText('scroll-lock.ts').first()).toBeVisible();
     await expect(builtinBadge(page)).toBeVisible();
 
     await openRepo(page, REPOS.tiny);
-    await expect(page.getByText('full history — 5 commits')).toBeVisible();
+    await expect(playableRange(page)).toHaveText('the whole history, 5 commits');
+    await page.getByLabel('Filter file paths in the tree').fill('scroll-lock');
     await expect(page.getByText('scroll-lock.ts')).toHaveCount(0);
     await expect(builtinBadge(page)).toHaveCount(0);
-    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('4');
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('0');
   });
 
-  test('switching mid-playback stops the old timeline', async ({ page }) => {
+  test('switching mid-playback stops the old history', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await transport(page).play.click();
     await expect(transport(page).pause).toBeVisible();
 
     await openRepo(page, REPOS.tiny);
-    await expect(page.getByText('full history — 5 commits')).toBeVisible();
+    await expect(playableRange(page)).toHaveText('the whole history, 5 commits');
 
     const index = await currentIndex(page);
     expect(index).toBeLessThanOrEqual(4);

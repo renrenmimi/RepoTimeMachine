@@ -1,0 +1,374 @@
+/*
+ * Two columns: where you are, and what is there.
+ *
+ * The commit heading and the player sit above both sub-views, so switching
+ * between the file tree and the diff changes only the content underneath.
+ */
+
+.replay {
+  display: grid;
+  grid-template-columns: var(--history-width) minmax(0, 1fr);
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.historyColumn {
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-page);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--space-6);
+  background: var(--bg-surface);
+}
+
+/* --------------------------------------------------------------- commit head */
+
+.commitHead {
+  flex-shrink: 0;
+  padding-top: var(--space-5);
+}
+
+.position {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.subject {
+  margin-top: var(--space-1);
+  font-size: var(--text-subject);
+  font-weight: 600;
+  line-height: 30px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.metaAuthor {
+  color: var(--text-primary);
+}
+
+.metaGap {
+  color: var(--text-secondary);
+}
+
+.dot {
+  color: var(--border-control);
+}
+
+.mono {
+  composes: mono from './controls.module.css';
+}
+
+.shaLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.shaPlain {
+  color: var(--text-secondary);
+}
+
+.metaToggle {
+  composes: buttonQuiet from './controls.module.css';
+  height: 24px;
+  font-size: var(--text-sm);
+}
+
+.bodyWrap {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-primary);
+}
+
+.bodyToggle {
+  composes: buttonQuiet from './controls.module.css';
+  height: 24px;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-md);
+  line-height: 22px;
+  color: var(--text-primary);
+}
+
+.summarySlash {
+  color: var(--border-control);
+}
+
+.summaryUnit,
+.summaryPending {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.plus {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--diff-add-text);
+}
+
+.minus {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--diff-remove-text);
+}
+
+/* --------------------------------------------------------------- milestones */
+
+.milestones {
+  margin-top: var(--space-2);
+}
+
+/* One compact line, not a stack of explanation cards in front of the changes. */
+.milestoneLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.milestoneCount {
+  composes: badge from './controls.module.css';
+  flex-shrink: 0;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+.milestoneCount[data-approximate] {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.milestoneLabels {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.milestoneToggle {
+  composes: buttonQuiet from './controls.module.css';
+  flex-shrink: 0;
+  height: 24px;
+  font-size: var(--text-sm);
+}
+
+.milestoneDetail {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.milestoneList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.milestoneItem {
+  min-width: 0;
+}
+
+.milestoneItemLabel {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text-primary);
+}
+
+.milestoneItemEvidence {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-primary);
+}
+
+.milestoneItemRule {
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+
+.confidence {
+  composes: badge from './controls.module.css';
+  font-weight: 400;
+}
+
+.confidence[data-level='window'] {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.confidence[data-level='probed'] {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.milestoneAll {
+  composes: buttonQuiet from './controls.module.css';
+  margin-top: var(--space-2);
+  height: 28px;
+  font-size: var(--text-sm);
+}
+
+/* ----------------------------------------------------------------- transport */
+
+.transportSlot {
+  flex-shrink: 0;
+  padding: var(--space-4) 0;
+}
+
+/* ----------------------------------------------------------------- sub-views */
+
+.subTabs {
+  composes: subTabList from './controls.module.css';
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.subTab {
+  composes: subTab from './controls.module.css';
+}
+
+.subTabCount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.subPanel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* The two panels bleed to the panel edges; the header keeps the padding. */
+  margin: 0 calc(-1 * var(--space-6));
+}
+
+/* ---------------------------------------------------------- history on narrow */
+
+.historyBar {
+  display: none;
+}
+
+.historyOpen {
+  composes: button from './controls.module.css';
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  height: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.historyOpenCount {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 1199px) {
+  .replay {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  .main {
+    padding: 0 var(--space-5);
+  }
+
+  .subPanel {
+    margin: 0 calc(-1 * var(--space-5));
+  }
+}
+
+@media (max-width: 899px) {
+  .replay {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .historyColumn {
+    display: none;
+  }
+
+  .historyBar {
+    display: flex;
+    padding: var(--space-3) var(--space-4) 0;
+    background: var(--bg-surface);
+  }
+
+  .main {
+    padding: 0 var(--space-4);
+  }
+
+  .commitHead {
+    padding-top: var(--space-4);
+  }
+
+  .subject {
+    font-size: var(--text-xl);
+    line-height: 28px;
+  }
+
+  .subPanel {
+    margin: 0 calc(-1 * var(--space-4));
+  }
+
+  .milestoneLine {
+    flex-wrap: wrap;
+  }
+
+  .milestoneLabels {
+    white-space: normal;
+  }
+}

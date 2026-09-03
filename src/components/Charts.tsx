@@ -6,26 +6,44 @@ import type { ActivityMap, GrowthSeries, LanguageEstimate } from '@/lib/stats/gr
 import styles from './charts.module.css';
 
 /**
- * Categorical palette for file-type composition.
+ * Categorical colours for file-type composition, as theme tokens.
  *
- * Muted, warm-to-cool, and deliberately not a rainbow: each hue has to sit on
- * graphite next to the green and amber the rest of the interface already uses.
+ * Reading them from the palette rather than hard-coding hexes is what stops the
+ * charts from staying dark when the interface is light.
  */
 export const CATEGORY_COLOURS = [
-  '#7bcb8d',
-  '#5fa8a8',
-  '#e2a75c',
-  '#c9805f',
-  '#8fa9c4',
-  '#b0b46a',
-  '#d2776a',
-  '#6f7f76',
+  'var(--cat-1)',
+  'var(--cat-2)',
+  'var(--cat-3)',
+  'var(--cat-4)',
+  'var(--cat-5)',
+  'var(--cat-6)',
+  'var(--cat-7)',
+  'var(--cat-8)',
 ] as const;
 
+/**
+ * The colour for a file type, from a stable mapping.
+ *
+ * Deterministic in the name, so TypeScript is the same colour in the replay and
+ * in both bars of a comparison — assigning by position would repaint the legend
+ * every time the ranking shifted. Two names can collide on a hue; the legend
+ * always carries the name in text beside the swatch, so nothing is lost when
+ * they do.
+ */
+export function colourForLanguage(language: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < language.length; i += 1) {
+    hash ^= language.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return CATEGORY_COLOURS[hash % CATEGORY_COLOURS.length]!;
+}
+
 const VIEW_W = 1000;
-const FILES_H = 120;
+const FILES_H = 130;
 const CHURN_H = 74;
-const GAP = 10;
+const GAP = 12;
 const VIEW_H = FILES_H + GAP + CHURN_H;
 
 type GrowthChartProps = {
@@ -107,26 +125,29 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
 
   return (
     <figure className={styles.figure}>
+      {/*
+       * The horizontal axis is commit order, not elapsed time: the points are
+       * evenly spaced whether two commits are a minute or a year apart, so the
+       * axis says which it is rather than letting the spacing imply the other.
+       */}
+      <div className={styles.axisTop}>
+        <span className={styles.axisY}>Files in tree ({formatNumber(maxFiles)} max)</span>
+        <span className={styles.axisNote}>Evenly spaced by commit order, not by elapsed time</span>
+      </div>
+
       <svg
         className={styles.chart}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="none"
         role="img"
         aria-label={
-          `Repository growth across ${count} loaded commits. ` +
+          `Repository growth across ${count} loaded commits, in commit order. ` +
           `Files rise from ${formatNumber(points[0]!.fileCount)} to ${formatNumber(points[count - 1]!.fileCount)}. ` +
           `Per-commit change counts are known for ${formatNumber(series.knownCommits)} of them.`
         }
         onPointerDown={handlePointer}
       >
-        <defs>
-          <linearGradient id="rtm-files" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(123, 203, 141, 0.30)" />
-            <stop offset="100%" stopColor="rgba(123, 203, 141, 0.02)" />
-          </linearGradient>
-        </defs>
-
-        <path d={geometry.area} fill="url(#rtm-files)" />
+        <path d={geometry.area} className={styles.filesArea} />
         {geometry.runs.map((run, index) => (
           <path
             key={index}
@@ -190,6 +211,15 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
         />
       </svg>
 
+      <div className={styles.axisBottom}>
+        <span>{formatDate(points[0]!.date)}</span>
+        <span className={styles.axisX}>
+          commit 1 &rarr; {formatNumber(count)}
+          {totalCommits > count ? ` of ${formatNumber(totalCommits)}` : ''}
+        </span>
+        <span>{formatDate(points[count - 1]!.date)}</span>
+      </div>
+
       <figcaption className={styles.caption}>
         <span>
           <span className={styles.swatchLine} aria-hidden="true" /> files in tree
@@ -211,6 +241,7 @@ export function GrowthChart({ series, currentIndex, totalCommits, onSeek }: Grow
         </span>
       </figcaption>
 
+      {/* Hover is not the only way in: every point is also readable as a table. */}
       <details className={styles.dataTable}>
         <summary>Read this chart as a table</summary>
         <div className={styles.tableScroll}>
@@ -259,13 +290,13 @@ export function LanguageBar({ estimate }: { estimate: LanguageEstimate }) {
   return (
     <div className={styles.languages}>
       <div className={styles.langBar} role="img" aria-label={describeLanguages(estimate)}>
-        {estimate.slices.map((slice, index) => (
+        {estimate.slices.map((slice) => (
           <span
             key={slice.language}
             className={styles.langSegment}
             style={{
               width: `${Math.max(slice.share * 100, 1.2)}%`,
-              background: CATEGORY_COLOURS[index % CATEGORY_COLOURS.length],
+              background: colourForLanguage(slice.language),
             }}
             title={`${slice.language}: ${formatNumber(slice.files)} files (${formatPercent(slice.share)})`}
           />
@@ -273,11 +304,11 @@ export function LanguageBar({ estimate }: { estimate: LanguageEstimate }) {
       </div>
 
       <ul className={styles.langLegend}>
-        {estimate.slices.map((slice, index) => (
+        {estimate.slices.map((slice) => (
           <li key={slice.language}>
             <span
               className={styles.langDot}
-              style={{ background: CATEGORY_COLOURS[index % CATEGORY_COLOURS.length] }}
+              style={{ background: colourForLanguage(slice.language) }}
               aria-hidden="true"
             />
             <span className={styles.langName}>{slice.language}</span>
@@ -305,11 +336,7 @@ function describeLanguages(estimate: LanguageEstimate): string {
 
 export function ActivityGrid({ map, onSeek }: { map: ActivityMap; onSeek: (index: number) => void }) {
   if (map.areas.length === 0 || map.knownCommits === 0) {
-    return (
-      <p className={styles.empty}>
-        Activity needs commit diffs. None have loaded for this range yet.
-      </p>
-    );
+    return <p className={styles.empty}>Activity needs commit diffs. None have loaded for this range yet.</p>;
   }
 
   const cellByKey = new Map(map.cells.map((cell) => [`${cell.area} ${cell.bucket}`, cell.changes]));
@@ -317,8 +344,9 @@ export function ActivityGrid({ map, onSeek }: { map: ActivityMap; onSeek: (index
   return (
     <div className={styles.activity}>
       <div className={styles.activityGrid} style={{ gridTemplateColumns: `auto repeat(${map.bucketCount}, 1fr)` }}>
+        {/* `display: contents` so each row's cells are items of the outer grid. */}
         {map.areas.map((area) => (
-          <div key={area} className={styles.activityRow} style={{ display: 'contents' }}>
+          <div key={area} style={{ display: 'contents' }}>
             <span className={styles.activityLabel} title={area}>
               {area}
             </span>
@@ -331,7 +359,9 @@ export function ActivityGrid({ map, onSeek }: { map: ActivityMap; onSeek: (index
                   key={bucket}
                   type="button"
                   className={styles.activityCell}
-                  style={{ background: `rgba(123, 203, 141, ${(0.06 + intensity * 0.72).toFixed(3)})` }}
+                  // One hue, varied by opacity: intensity is a quantity, not a category.
+                  style={{ opacity: (0.12 + intensity * 0.88).toFixed(3) }}
+                  data-empty={value === 0 || undefined}
                   onClick={() => range && onSeek(range.fromIndex)}
                   title={
                     range
@@ -350,8 +380,9 @@ export function ActivityGrid({ map, onSeek }: { map: ActivityMap; onSeek: (index
         ))}
       </div>
       <p className={styles.langNote}>
-        Each column is a slice of the loaded range; darker means more changed files in that folder. Built from the{' '}
-        {formatNumber(map.knownCommits)} commit diff{map.knownCommits === 1 ? '' : 's'} loaded so far.
+        Each column is an equal slice of the loaded range, in commit order; darker means more changed files in that
+        folder. Built from the {formatNumber(map.knownCommits)} commit diff
+        {map.knownCommits === 1 ? '' : 's'} loaded so far.
       </p>
     </div>
   );

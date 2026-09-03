@@ -29,6 +29,7 @@ function setup(overrides: Partial<PlaybackState> = {}, props: Partial<Parameters
     onPrevious: vi.fn(),
     onSeek: vi.fn(),
     onSpeed: vi.fn(),
+    onLatest: vi.fn(),
   };
   const playback = { ...initialPlaybackState(range.length, 0), ...overrides };
   render(
@@ -36,7 +37,7 @@ function setup(overrides: Partial<PlaybackState> = {}, props: Partial<Parameters
       playback={playback}
       commits={range}
       milestones={[milestone(0), milestone(7)]}
-      rangeLabel="full history — 20 commits"
+      rangeLabel="the whole history, 20 commits"
       disabled={false}
       {...handlers}
       {...props}
@@ -48,13 +49,37 @@ function setup(overrides: Partial<PlaybackState> = {}, props: Partial<Parameters
 describe('Transport controls', () => {
   it('labels the play button by what it will do', () => {
     setup({ playing: false });
-    expect(screen.getByRole('button', { name: 'Play history' })).toHaveAttribute('aria-pressed', 'false');
+    const play = screen.getByRole('button', { name: 'Play history' });
+    expect(play).toHaveAttribute('aria-pressed', 'false');
+    // A bare triangle is not an entry point, so the control carries the word.
+    expect(play).toHaveTextContent('Play');
+  });
+
+  it('offers a replay at the end of the range instead of a dead button', () => {
+    setup({ index: range.length - 1, playing: false });
+    const play = screen.getByRole('button', {
+      name: 'Replay the history from the first loaded commit',
+    });
+    expect(play).toBeEnabled();
+    expect(play).toHaveTextContent('Replay');
+  });
+
+  it('jumps to the newest commit in the range', async () => {
+    const handlers = setup({ index: 3 });
+    await userEvent.click(screen.getByRole('button', { name: 'Latest' }));
+    expect(handlers.onLatest).toHaveBeenCalledTimes(1);
+  });
+
+  it('has nothing to jump to when already on the newest commit', () => {
+    setup({ index: range.length - 1 });
+    expect(screen.getByRole('button', { name: 'Latest' })).toBeDisabled();
   });
 
   it('switches to a pause label while playing', () => {
     setup({ playing: true });
     const button = screen.getByRole('button', { name: 'Pause playback' });
     expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button).toHaveTextContent('Pause');
   });
 
   it('calls the play handler on click', async () => {
@@ -77,22 +102,24 @@ describe('Transport controls', () => {
     expect(screen.getByRole('button', { name: 'Next commit' })).toBeEnabled();
   });
 
-  it('disables play for a single-commit range', () => {
+  it('explains a single-commit range instead of just disabling play', () => {
     render(
       <Transport
         playback={initialPlaybackState(1, 0)}
         commits={commits(1)}
         milestones={[]}
-        rangeLabel="full history — 1 commit"
+        rangeLabel="the whole history, 1 commit"
         disabled={false}
         onPlayPause={vi.fn()}
         onNext={vi.fn()}
         onPrevious={vi.fn()}
         onSeek={vi.fn()}
         onSpeed={vi.fn()}
+        onLatest={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: 'Play history' })).toBeDisabled();
+    expect(screen.getByText(/one commit in this range/)).toBeInTheDocument();
   });
 });
 
@@ -146,10 +173,19 @@ describe('Transport scrubber', () => {
 });
 
 describe('Transport read-out', () => {
-  it('shows the position and the honest range label', () => {
+  it('shows the honest range label', () => {
     setup({ index: 6 });
-    expect(screen.getByText('7 / 20')).toBeInTheDocument();
-    expect(screen.getByText('full history — 20 commits')).toBeInTheDocument();
+    expect(screen.getByText('the whole history, 20 commits')).toBeInTheDocument();
+  });
+
+  it('states the position for a screen reader on the slider itself', () => {
+    // The visible position lives in the commit heading directly above this
+    // row, so repeating it here would only be noise on screen.
+    setup({ index: 6 });
+    expect(screen.getByRole('slider', { name: /Commit position/ })).toHaveAttribute(
+      'aria-valuetext',
+      expect.stringContaining('Commit 7 of 20'),
+    );
   });
 
   it('says so when nothing is loaded', () => {
@@ -165,9 +201,9 @@ describe('Transport read-out', () => {
         onPrevious={vi.fn()}
         onSeek={vi.fn()}
         onSpeed={vi.fn()}
+        onLatest={vi.fn()}
       />,
     );
-    expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.getAllByText('no commits loaded').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Play history' })).toBeDisabled();
   });
@@ -185,9 +221,11 @@ describe('Transport read-out', () => {
         onPrevious={vi.fn()}
         onSeek={vi.fn()}
         onSpeed={vi.fn()}
+        onLatest={vi.fn()}
       />,
     );
-    const marks = container.querySelectorAll('button[tabindex="-1"]');
+    // One mark per commit that matched, not one per rule that fired.
+    const marks = container.querySelectorAll('[class*="milestoneMark"]');
     expect(marks).toHaveLength(2);
   });
 
@@ -204,10 +242,19 @@ describe('Transport read-out', () => {
         onPrevious={vi.fn()}
         onSeek={vi.fn()}
         onSpeed={vi.fn()}
+        onLatest={vi.fn()}
       />,
     );
-    for (const mark of container.querySelectorAll('button[tabindex="-1"]')) {
-      expect(mark).toHaveAttribute('tabindex', '-1');
+    /*
+     * They are marks, not controls: 260 unreachable buttons in the tab order
+     * was worse than none, and jumping to a milestone is a named action in the
+     * history list and in Insights.
+     */
+    const marks = container.querySelectorAll('[class*="milestoneMark"]');
+    expect(marks).toHaveLength(1);
+    for (const mark of marks) {
+      expect(mark.tagName).not.toBe('BUTTON');
+      expect(mark).toHaveAttribute('aria-hidden', 'true');
     }
   });
 });

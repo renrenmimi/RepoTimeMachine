@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { AUTO_PAGES, HistoryController, MAX_PAGES, planCheckpoints } from '@/lib/client/history-controller';
+import {
+  AUTO_PAGES,
+  HistoryController,
+  isCompareDirty,
+  MAX_PAGES,
+  planCheckpoints,
+} from '@/lib/client/history-controller';
 import { FakeApi, notFound, rateLimited, ref, settle, until } from './fake-api';
 
 const BUNDLES = {
@@ -74,12 +80,15 @@ describe('loading a repository', () => {
     }
   });
 
-  it('starts on the newest commit, paused', async () => {
+  it('starts on the earliest loaded commit, paused, in the replay view', async () => {
     const controller = make(new FakeApi({ bundles: BUNDLES }));
     await controller.load(TINY);
     const state = controller.getState();
-    expect(state.playback.index).toBe(state.commits.length - 1);
+    // The point of the tool is stepping forward, so arrival is the start of the
+    // range rather than the finished repository.
+    expect(state.playback.index).toBe(0);
     expect(state.playback.playing).toBe(false);
+    expect(state.view).toBe('replay');
   });
 
   it('handles a repository with exactly one commit', async () => {
@@ -276,6 +285,36 @@ describe('request budgeting', () => {
     await settle(controller);
     expect(api.countOf('probe')).toBe(0);
   });
+
+  it('still probes when the playhead starts away from the newest commit', async () => {
+    /*
+     * The candidate paths are taken from the newest tree in range. When the
+     * playhead defaulted to the newest commit that tree happened to be loaded
+     * first; now that arrival is the *earliest* commit, it is not — and reading
+     * the snapshot map optimistically meant probes quietly stopped running and
+     * every milestone lost the precision they buy.
+     */
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    await settle(controller);
+
+    expect(controller.getState().playback.index).toBe(0);
+    expect(api.countOf('probe')).toBeGreaterThan(0);
+  });
+
+  it('reads no extra tree to run the probes', async () => {
+    // The newest commit is always a checkpoint, and the tree cache shares an
+    // in-flight request, so wanting it for the probes costs nothing.
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    await settle(controller);
+
+    const trees = api.calls.filter((call) => call.endpoint === 'tree');
+    const shas = new Set(trees.map((call) => JSON.stringify(call)));
+    expect(trees.length).toBe(shas.size);
+  });
 });
 
 describe('stale requests and repository switching', () => {
@@ -361,10 +400,10 @@ describe('selection', () => {
     expect(controller.currentCommit?.sha).toBe(target.sha);
   });
 
-  it('falls back to the newest commit when the requested sha is not in range', async () => {
+  it('falls back to the earliest loaded commit when the requested sha is not in range', async () => {
     const controller = make(new FakeApi({ bundles: BUNDLES }));
     await controller.load(MEDIUM, 'deadbee');
-    expect(controller.getState().playback.index).toBe(11);
+    expect(controller.getState().playback.index).toBe(0);
   });
 
   it('moves the playhead through dispatchPlayback', async () => {
@@ -542,7 +581,8 @@ describe('comparing two points', () => {
 
     const { commits } = controller.getState();
     controller.openCompare(commits[2]!.sha, commits[9]!.sha);
-    expect(controller.getState().compare).toMatchObject({ open: true, status: 'loading' });
+    expect(controller.getState().view).toBe('compare');
+    expect(controller.getState().compare).toMatchObject({ status: 'loading' });
 
     await until(() => controller.getState().compare.status === 'ready');
     const compare = controller.getState().compare.data!;
@@ -561,12 +601,70 @@ describe('comparing two points', () => {
     controller.openCompare(commits[0]!.sha, commits[5]!.sha);
     await until(() => controller.getState().compare.status === 'ready');
 
-    controller.setCompareEnd('head', commits[8]!.sha);
+    controller.setCompareDraft('head', commits[8]!.sha);
+    controller.submitCompare();
     await until(() => controller.getState().compare.data?.head.sha === commits[8]!.sha);
 
     const state = controller.getState().compare;
     expect(state.base).toBe(commits[0]!.sha);
     expect(state.data?.aheadBy).toBe(8);
+  });
+
+  it('costs nothing to move a selector until the comparison is submitted', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.prepareCompare(commits[0]!.sha, commits[5]!.sha);
+    expect(api.countOf('compare')).toBe(0);
+
+    // Four changes of mind, still no request.
+    controller.setCompareDraft('head', commits[6]!.sha);
+    controller.setCompareDraft('head', commits[7]!.sha);
+    controller.setCompareDraft('base', commits[1]!.sha);
+    controller.swapCompareDraft();
+    expect(api.countOf('compare')).toBe(0);
+    expect(controller.getState().compare.status).toBe('idle');
+
+    controller.submitCompare();
+    await until(() => controller.getState().compare.status === 'ready');
+    expect(api.countOf('compare')).toBe(1);
+  });
+
+  it('never shows a loaded result under endpoints it does not describe', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[0]!.sha, commits[5]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+    expect(isCompareDirty(controller.getState().compare)).toBe(false);
+
+    // Moving a selector makes the result on screen stale, and says so.
+    controller.setCompareDraft('head', commits[9]!.sha);
+    expect(isCompareDirty(controller.getState().compare)).toBe(true);
+
+    controller.submitCompare();
+    await until(() => controller.getState().compare.status === 'ready');
+    expect(isCompareDirty(controller.getState().compare)).toBe(false);
+    expect(controller.getState().compare.data?.head.sha).toBe(commits[9]!.sha);
+  });
+
+  it('does not re-request the comparison already on screen', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    const { commits } = controller.getState();
+
+    controller.openCompare(commits[1]!.sha, commits[4]!.sha);
+    await until(() => controller.getState().compare.status === 'ready');
+
+    controller.submitCompare();
+    controller.submitCompare();
+    expect(api.countOf('compare')).toBe(1);
+    expect(controller.getState().compare.status).toBe('ready');
   });
 
   it('swaps the two ends, which reverses the difference', async () => {
@@ -579,7 +677,8 @@ describe('comparing two points', () => {
     await until(() => controller.getState().compare.status === 'ready');
     const forward = controller.getState().compare.data!;
 
-    controller.swapCompare();
+    controller.swapCompareDraft();
+    controller.submitCompare();
     await until(() => controller.getState().compare.data?.status === 'behind');
     const backward = controller.getState().compare.data!;
 
@@ -604,7 +703,7 @@ describe('comparing two points', () => {
     expect(controller.getState().compare.data?.head).toMatchObject({ kind: 'tag', tagName: tag.name });
   });
 
-  it('closes without touching the timeline position', async () => {
+  it('leaving the compare view does not touch the replay position', async () => {
     const controller = make(new FakeApi({ bundles: BUNDLES }));
     await controller.load(MEDIUM);
     controller.dispatchPlayback({ type: 'seek', index: 4 });
@@ -613,10 +712,12 @@ describe('comparing two points', () => {
     controller.openCompare(commits[0]!.sha, commits[3]!.sha);
     await until(() => controller.getState().compare.status === 'ready');
 
-    controller.closeCompare();
-    expect(controller.getState().compare.open).toBe(false);
-    expect(controller.getState().compare.data).toBeNull();
+    controller.setView('replay');
+    expect(controller.getState().view).toBe('replay');
     expect(controller.getState().playback.index).toBe(4);
+
+    // The comparison is still there to come back to.
+    expect(controller.getState().compare.data).not.toBeNull();
   });
 
   it('de-duplicates a comparison already loaded', async () => {
@@ -644,23 +745,26 @@ describe('comparing two points', () => {
     await until(() => controller.getState().compare.status === 'error');
 
     expect(controller.getState().compare.error?.code).toBe('rate-limited');
-    expect(controller.getState().compare.open).toBe(true);
-    // The timeline itself is unaffected.
+    expect(controller.getState().view).toBe('compare');
+    // The endpoints are still there, so the selectors and Retry still work.
+    expect(controller.getState().compare.draftBase).toBe(commits[0]!.sha);
+    // The replay itself is unaffected.
     expect(controller.getState().status).toBe('ready');
   });
 
-  it('discards a comparison superseded by a newer pick', async () => {
+  it('discards a comparison superseded by a newer submission', async () => {
     const api = new FakeApi({ bundles: BUNDLES, latency: 25 });
     const controller = make(api);
     await controller.load(MEDIUM);
     const { commits } = controller.getState();
 
     controller.openCompare(commits[0]!.sha, commits[3]!.sha);
-    controller.openCompare(commits[0]!.sha, commits[7]!.sha);
+    controller.setCompareDraft('head', commits[7]!.sha);
+    controller.submitCompare();
     await until(() => controller.getState().compare.status === 'ready', 3000);
     await new Promise((resolve) => setTimeout(resolve, 60));
 
-    // The later pick wins, and the earlier one cannot overwrite it.
+    // The later submission wins, and the earlier one cannot overwrite it.
     expect(controller.getState().compare.head).toBe(commits[7]!.sha);
     expect(controller.getState().compare.data?.head.sha).toBe(commits[7]!.sha);
   });
@@ -673,8 +777,9 @@ describe('comparing two points', () => {
     await until(() => controller.getState().compare.status === 'ready');
 
     await controller.load(TINY);
-    expect(controller.getState().compare.open).toBe(false);
+    expect(controller.getState().view).toBe('replay');
     expect(controller.getState().compare.data).toBeNull();
+    expect(controller.getState().compare.draftBase).toBeNull();
   });
 
   it('opens straight into a comparison from a shared link', async () => {
@@ -689,22 +794,24 @@ describe('comparing two points', () => {
     });
     await until(() => controller.getState().compare.status === 'ready');
 
+    expect(controller.getState().view).toBe('compare');
     const compare = controller.getState().compare.data!;
     expect(compare.base.sha).toBe(commits[2]!.sha);
     expect(compare.head.sha).toBe(commits[8]!.sha);
   });
 
-  it('ignores an incomplete pick rather than requesting half a comparison', async () => {
+  it('ignores an incomplete selection rather than requesting half a comparison', async () => {
     const api = new FakeApi({ bundles: BUNDLES });
     const controller = make(api);
     await controller.load(MEDIUM);
 
-    // Nothing is open, so setting one end alone cannot form a comparison.
-    controller.setCompareEnd('head', controller.getState().commits[3]!.sha);
-    expect(controller.getState().compare.open).toBe(false);
+    // One end alone cannot form a comparison.
+    controller.setCompareDraft('head', controller.getState().commits[3]!.sha);
+    controller.submitCompare();
     expect(api.countOf('compare')).toBe(0);
 
-    controller.swapCompare();
+    controller.swapCompareDraft();
+    controller.submitCompare();
     expect(api.countOf('compare')).toBe(0);
   });
 
@@ -714,20 +821,22 @@ describe('comparing two points', () => {
     const { commits } = controller.getState();
 
     // Exactly how the interface hands these to a button's onClick.
-    const { openCompare, setCompareEnd, swapCompare, closeCompare } = controller;
+    const { openCompare, setCompareDraft, swapCompareDraft, submitCompare, closeCompare } = controller;
 
     openCompare(commits[1]!.sha, commits[5]!.sha);
     await until(() => controller.getState().compare.status === 'ready');
     expect(controller.getState().compare.data?.status).toBe('ahead');
 
-    swapCompare();
+    swapCompareDraft();
+    submitCompare();
     await until(() => controller.getState().compare.data?.status === 'behind');
 
-    setCompareEnd('head', commits[0]!.sha);
+    setCompareDraft('head', commits[0]!.sha);
+    submitCompare();
     await until(() => controller.getState().compare.data?.head.sha === commits[0]!.sha);
 
     closeCompare();
-    expect(controller.getState().compare.open).toBe(false);
+    expect(controller.getState().compare.data).toBeNull();
   });
 
   it('reports two identical points as identical', async () => {
@@ -742,5 +851,74 @@ describe('comparing two points', () => {
     expect(compare.status).toBe('identical');
     expect(compare.files).toEqual([]);
     expect(compare.aheadBy).toBe(0);
+  });
+});
+
+describe('switching views', () => {
+  it('pauses playback on the way out and keeps the position and speed', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+
+    controller.dispatchPlayback({ type: 'seek', index: 6 });
+    controller.dispatchPlayback({ type: 'setSpeed', speed: 4 });
+    controller.dispatchPlayback({ type: 'play' });
+    expect(controller.getState().playback.playing).toBe(true);
+
+    controller.setView('insights');
+    expect(controller.getState().playback.playing).toBe(false);
+    expect(controller.getState().playback.index).toBe(6);
+    expect(controller.getState().playback.speed).toBe(4);
+
+    // Coming back finds the same commit, still paused.
+    controller.setView('replay');
+    expect(controller.getState().view).toBe('replay');
+    expect(controller.getState().playback.index).toBe(6);
+    expect(controller.getState().playback.speed).toBe(4);
+    expect(controller.getState().playback.playing).toBe(false);
+  });
+
+  it('keeps the loaded history and makes no request', async () => {
+    const api = new FakeApi({ bundles: BUNDLES });
+    const controller = make(api);
+    await controller.load(MEDIUM);
+    await settle(controller);
+
+    const before = {
+      commits: controller.getState().commits.length,
+      details: controller.details.size,
+      calls: api.countOf('repo') + api.countOf('commits') + api.countOf('tree') + api.countOf('commit'),
+    };
+
+    controller.setView('insights');
+    controller.setView('compare');
+    controller.setView('replay');
+
+    expect(controller.getState().commits).toHaveLength(before.commits);
+    expect(controller.details.size).toBe(before.details);
+    expect(api.countOf('repo') + api.countOf('commits') + api.countOf('tree') + api.countOf('commit')).toBe(
+      before.calls,
+    );
+  });
+
+  it('pauses playback when the visitor settles down to read', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM);
+    controller.dispatchPlayback({ type: 'seek', index: 3 });
+    controller.dispatchPlayback({ type: 'play' });
+
+    controller.pausePlayback();
+    expect(controller.getState().playback.playing).toBe(false);
+    // Reading must not move the evidence out from under the reader.
+    expect(controller.getState().playback.index).toBe(3);
+  });
+
+  it('restores the replay view from a link that names it', async () => {
+    const controller = make(new FakeApi({ bundles: BUNDLES }));
+    await controller.load(MEDIUM, null, null, 'insights');
+    expect(controller.getState().view).toBe('insights');
+
+    // A second load of the same repository is a Back-button restore, not a refetch.
+    await controller.load(MEDIUM, null, null, 'replay');
+    expect(controller.getState().view).toBe('replay');
   });
 });

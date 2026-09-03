@@ -3,7 +3,7 @@
  * Captures the screenshots used to review layout and hierarchy.
  *
  * Point it at a running server. The built-in demo is deterministic on its own;
- * fixture mode additionally makes the loaded-range shot reproducible:
+ * fixture mode additionally makes the loaded-range and live shots reproducible:
  *
  *     npm run build
  *     RTM_FIXTURE_MODE=1 npx next start -p 3311 &
@@ -24,78 +24,131 @@ const REPO = 'demo/learning-platform';
 /** Only reachable with RTM_FIXTURE_MODE=1; skipped otherwise. */
 const BIG = 'rtm-fixtures/big-history';
 
-/** @type {{name: string, width: number, height: number, path: string, steps?: (page: import('@playwright/test').Page) => Promise<void>}[]} */
+const demo = (params = '') => `/?repo=${encodeURIComponent(REPO)}${params}`;
+
+/**
+ * @type {{
+ *   name: string, width: number, height: number, path: string,
+ *   theme?: 'light' | 'dark',
+ *   steps?: (page: import('@playwright/test').Page) => Promise<void>,
+ * }[]}
+ */
 const shots = [
-  { name: '01-landing-desktop', width: 1440, height: 940, path: '/' },
-  { name: '02-timeline-desktop', width: 1440, height: 940, path: `/?repo=${encodeURIComponent(REPO)}` },
+  { name: '01-home-desktop', width: 1440, height: 900, path: '/' },
+  { name: '02-replay-first-step', width: 1440, height: 900, path: demo() },
   {
-    name: '03-early-history-desktop',
+    name: '03-replay-mid-history',
     width: 1440,
-    height: 940,
-    path: `/?repo=${encodeURIComponent(REPO)}`,
+    height: 900,
+    path: demo(),
     steps: async (page) => {
-      await page.getByRole('slider', { name: /Commit position/ }).fill('2');
+      await page.getByRole('slider', { name: /Commit position/ }).fill('9');
       await page.waitForTimeout(900);
     },
   },
   {
-    name: '04-patch-open-desktop',
+    name: '04-replay-changes-diff',
     width: 1440,
-    height: 940,
-    path: `/?repo=${encodeURIComponent(REPO)}`,
+    height: 900,
+    path: demo(),
     steps: async (page) => {
-      await page.waitForTimeout(1500);
+      await page.getByRole('slider', { name: /Commit position/ }).fill('9');
+      await page.waitForTimeout(1200);
+      await page.getByRole('tab', { name: /Changes/ }).click();
       await page.locator('[class*="fileButton"]').first().click();
       await page.waitForTimeout(400);
     },
   },
   {
-    name: '05-milestones-desktop',
+    name: '05-compare',
     width: 1440,
-    height: 940,
-    path: `/?repo=${encodeURIComponent(REPO)}`,
-    steps: async (page) => {
-      await page.getByRole('tab', { name: /Milestones/ }).click();
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: '06-commits-desktop',
-    width: 1440,
-    height: 940,
-    path: `/?repo=${encodeURIComponent(REPO)}`,
-    steps: async (page) => {
-      await page.getByRole('tab', { name: 'Commits' }).click();
-      await page.waitForTimeout(600);
-    },
-  },
-  {
-    name: '07-loaded-range-desktop',
-    width: 1440,
-    height: 940,
-    path: `/?repo=${encodeURIComponent(BIG)}`,
-    steps: async (page) => {
-      await page.getByRole('tab', { name: 'Commits' }).click();
-      await page.waitForTimeout(900);
-    },
-  },
-  { name: '08-error-desktop', width: 1440, height: 940, path: '/?repo=rtm-fixtures%2Frate-limited' },
-  { name: '09-live-desktop', width: 1440, height: 940, path: '/?repo=rtm-fixtures%2Fsample-app' },
-  { name: '10-landing-mobile', width: 390, height: 900, path: '/' },
-  { name: '11-timeline-mobile', width: 390, height: 900, path: `/?repo=${encodeURIComponent(REPO)}` },
-  {
-    name: '12-tree-mobile',
-    width: 390,
     height: 900,
-    path: `/?repo=${encodeURIComponent(REPO)}`,
+    path: demo(),
     steps: async (page) => {
-      await page.waitForTimeout(1500);
-      await page.getByRole('heading', { name: 'Working tree' }).scrollIntoViewIfNeeded();
+      await page.getByRole('slider', { name: /Commit position/ }).fill('12');
+      await page.waitForTimeout(600);
+      await page.getByRole('tab', { name: 'Compare' }).click();
+      await page.waitForTimeout(1400);
+    },
+  },
+  {
+    name: '06-compare-picker',
+    width: 1440,
+    height: 900,
+    path: demo(),
+    steps: async (page) => {
+      await page.getByRole('tab', { name: 'Compare' }).click();
+      await page.waitForTimeout(1200);
+      await page.getByRole('button', { name: /^From/ }).click();
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: '07-insights',
+    width: 1440,
+    height: 900,
+    path: demo(),
+    steps: async (page) => {
+      await page.getByRole('tab', { name: 'Insights' }).click();
+      await page.waitForTimeout(1200);
+    },
+  },
+  {
+    name: '08-insights-milestones',
+    width: 1440,
+    height: 900,
+    path: demo(),
+    steps: async (page) => {
+      await page.getByRole('tab', { name: 'Insights' }).click();
+      await page.waitForTimeout(1200);
+      await page.getByRole('heading', { name: /Milestones/ }).scrollIntoViewIfNeeded();
       await page.waitForTimeout(400);
     },
   },
-  { name: '13-timeline-360', width: 360, height: 780, path: `/?repo=${encodeURIComponent(REPO)}` },
-  { name: '14-live-360', width: 360, height: 780, path: '/?repo=rtm-fixtures%2Fsample-app' },
+  { name: '09-replay-dark', width: 1440, height: 900, path: demo(), theme: 'dark' },
+  { name: '10-compare-dark', width: 1440, height: 900, path: demo(), theme: 'dark',
+    steps: async (page) => {
+      await page.getByRole('tab', { name: 'Compare' }).click();
+      await page.waitForTimeout(1400);
+    },
+  },
+  { name: '11-replay-1280x720', width: 1280, height: 720, path: demo() },
+  { name: '12-replay-1024x768', width: 1024, height: 768, path: demo() },
+  {
+    name: '13-loaded-range',
+    width: 1440,
+    height: 900,
+    path: `/?repo=${encodeURIComponent(BIG)}`,
+    steps: async (page) => {
+      await page.waitForTimeout(900);
+    },
+  },
+  { name: '14-live-repository', width: 1440, height: 900, path: '/?repo=rtm-fixtures%2Fsample-app' },
+  { name: '15-error-rate-limited', width: 1440, height: 900, path: '/?repo=rtm-fixtures%2Frate-limited' },
+  { name: '16-home-390', width: 390, height: 844, path: '/' },
+  { name: '17-replay-390', width: 390, height: 844, path: demo() },
+  {
+    name: '18-history-drawer-390',
+    width: 390,
+    height: 844,
+    path: demo(),
+    steps: async (page) => {
+      await page.waitForTimeout(900);
+      await page.getByRole('button', { name: /^History/ }).click();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: '19-compare-390',
+    width: 390,
+    height: 844,
+    path: demo(),
+    steps: async (page) => {
+      await page.getByRole('tab', { name: 'Compare' }).click();
+      await page.waitForTimeout(1400);
+    },
+  },
+  { name: '20-replay-360', width: 360, height: 800, path: demo() },
 ];
 
 async function main() {
@@ -107,7 +160,7 @@ async function main() {
     const page = await browser.newPage({
       viewport: { width: shot.width, height: shot.height },
       deviceScaleFactor: 2,
-      colorScheme: 'dark',
+      colorScheme: shot.theme === 'dark' ? 'dark' : 'light',
     });
 
     const errors = [];
@@ -140,7 +193,9 @@ async function main() {
   }
 
   await browser.close();
-  process.stdout.write(`\n${shots.length} screenshots in docs/screenshots/${problems > 0 ? `, ${problems} with problems` : ''}\n`);
+  process.stdout.write(
+    `\n${shots.length} screenshots in docs/screenshots/${problems > 0 ? `, ${problems} with problems` : ''}\n`,
+  );
   process.exit(problems > 0 ? 1 : 0);
 }
 

@@ -8,21 +8,34 @@ import {
   MAX_PAGES,
   type HistoryState,
 } from '@/lib/client/history-controller';
-import { formatNumber } from '@/lib/format';
 import { nextSpeed, stepMs } from '@/lib/playback/machine';
+import { describePlayableRange } from '@/lib/range';
 import type { RepoRef } from '@/lib/repo-ref';
-import { buildAppUrl, parseAppUrl } from '@/lib/url/state';
-import { CommitPanel } from './CommitPanel';
-import { ComparePanel } from './ComparePanel';
+import { buildAppUrl, parseAppUrl, type AppView } from '@/lib/url/state';
+import { CompareView } from './CompareView';
 import type { PickerChoice } from './ComparePicker';
-import { InsightsPanel } from './InsightsPanel';
-import { RateLimitMeter } from './RateLimitMeter';
+import { InsightsView } from './InsightsView';
+import { Overlay } from './Overlay';
+import { ReplayView } from './ReplayView';
 import { RepoInput } from './RepoInput';
-import { BuiltinGlyph, EmptyRepoState, ErrorState, Landing, LoadingState } from './States';
-import { Transport } from './Transport';
-import { TreePanel } from './TreePanel';
+import { GitHubUsage, SourceStatus } from './SourceStatus';
+import { EmptyRepoState, ErrorState, HowItWorks, Landing, LoadingState } from './States';
+import { TopBar } from './TopBar';
 import { usePrefersReducedMotion } from './hooks';
 import styles from './shell.module.css';
+
+const VIEWS: { id: AppView; label: string }[] = [
+  { id: 'replay', label: 'Replay' },
+  { id: 'compare', label: 'Compare' },
+  { id: 'insights', label: 'Insights' },
+];
+
+/** What the skip link should land on, per view. */
+const SKIP_LABEL: Record<AppView, string> = {
+  replay: 'Skip to the commit and its changes',
+  compare: 'Skip to the comparison',
+  insights: 'Skip to the insights',
+};
 
 export function TimeMachine() {
   // The controller is created once and never replaced; useState's initialiser is
@@ -35,9 +48,12 @@ export function TimeMachine() {
     () => EMPTY_HISTORY_STATE,
   );
 
+  const [overlay, setOverlay] = useState<'repo' | 'help' | null>(null);
+
   const playback = state.playback;
   const currentCommit = state.commits[playback.index] ?? null;
   const reducedMotion = usePrefersReducedMotion();
+  const view = state.view;
 
   useEffect(() => () => controller.dispose(), [controller]);
 
@@ -47,9 +63,7 @@ export function TimeMachine() {
     (search: string) => {
       const parsed = parseAppUrl(search);
       if (parsed.repo) {
-        void controller.load(parsed.repo, parsed.commit, parsed.compare ?? null);
-        // Back out of a comparison when the entry being restored has none.
-        if (!parsed.compare) controller.closeCompare();
+        void controller.load(parsed.repo, parsed.commit, parsed.compare ?? null, parsed.view);
       } else {
         controller.reset();
       }
@@ -66,117 +80,156 @@ export function TimeMachine() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [applyUrl]);
 
-  const writeUrl = useCallback(
-    (
-      ref: RepoRef | null,
-      sha: string | null,
-      mode: 'push' | 'replace',
-      compare: { base: string; head: string } | null = null,
-    ) => {
-      if (typeof window === 'undefined') return;
-      const next = buildAppUrl({ repo: ref, commit: sha, compare });
-      const current = `${window.location.pathname}${window.location.search}`;
-      if (next === current) return;
-      window.history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', next);
-    },
-    [],
-  );
+  /**
+   * The address bar mirrors the state, and a deliberate act pushes an entry.
+   *
+   * Playback replaces, so a minute of playing does not bury the entry the
+   * visitor arrived on; navigating, jumping and running a comparison push, so
+   * Back undoes exactly the thing that was just done.
+   */
+  const pushNext = useRef(false);
+  const shareUrl = useMemo(() => {
+    if (!state.ref) return '/';
+    // Only a comparison that actually ran is shareable; a draft describes nothing.
+    if (view === 'compare' && state.compare.base && state.compare.head && state.compare.data) {
+      return buildAppUrl({
+        repo: state.ref,
+        commit: null,
+        compare: { base: state.compare.base, head: state.compare.head },
+        view: 'compare',
+      });
+    }
+    return buildAppUrl({
+      repo: state.ref,
+      commit: currentCommit?.sha ?? null,
+      compare: null,
+      view: view === 'insights' ? 'insights' : 'replay',
+    });
+  }, [state.ref, view, state.compare.base, state.compare.head, state.compare.data, currentCommit]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (shareUrl === current) {
+      pushNext.current = false;
+      return;
+    }
+    window.history[pushNext.current ? 'pushState' : 'replaceState'](null, '', shareUrl);
+    pushNext.current = false;
+  }, [shareUrl]);
 
   const openRepo = useCallback(
     (ref: RepoRef) => {
-      writeUrl(ref, null, 'push');
+      pushNext.current = true;
+      setOverlay(null);
       void controller.load(ref);
     },
-    [controller, writeUrl],
+    [controller],
   );
 
   const clearRepo = useCallback(() => {
-    writeUrl(null, null, 'push');
+    pushNext.current = true;
+    setOverlay(null);
     controller.reset();
-  }, [controller, writeUrl]);
+  }, [controller]);
 
   const openBuiltinDemo = useCallback(() => {
     openRepo(BUILTIN_DEMO.ref);
   }, [openRepo]);
 
-  // Keep the share URL current. Playback steps replace the entry; deliberate
-  // jumps push one, so Back returns to where the visitor jumped from.
-  const lastPushedRef = useRef<string | null>(null);
-  const compareOpen = state.compare.open;
-  const compareBase = state.compare.base;
-  const compareHead = state.compare.head;
-
-  useEffect(() => {
-    if (!state.ref) return;
-
-    // The two views own the address bar in turn, never at the same time.
-    if (compareOpen && compareBase && compareHead) {
-      writeUrl(state.ref, null, 'replace', { base: compareBase, head: compareHead });
-      return;
-    }
-
-    if (!currentCommit) return;
-    const mode = lastPushedRef.current === currentCommit.sha ? 'push' : 'replace';
-    writeUrl(state.ref, currentCommit.sha, mode);
-    lastPushedRef.current = null;
-  }, [state.ref, currentCommit, writeUrl, compareOpen, compareBase, compareHead]);
-
   const dispatch = controller.dispatchPlayback;
 
+  const seek = useCallback(
+    (index: number, options: { push?: boolean } = {}) => {
+      if (options.push) pushNext.current = true;
+      dispatch({ type: 'seek', index });
+    },
+    [dispatch],
+  );
+
+  // ------------------------------------------------------------------- views
+
   /**
-   * Opens the comparison with a sensible pair already chosen: the commit in view
-   * as head, and the previous release tag — or the start of the loaded range —
-   * as base, which is the comparison people most often want.
+   * Opening the comparison.
+   *
+   * A pair is proposed straight away and run once. Returning to a comparison
+   * that is already loaded re-runs nothing.
+   *
+   * The default is the step before the current commit and the current commit —
+   * "what did the last step do" — except at the very first commit, where there
+   * is no step before it and the useful comparison is the whole loaded range.
+   * Offering a commit compared with itself would answer nothing.
    */
-  const openCompare = useCallback(() => {
-    const head = currentCommit ?? state.commits[state.commits.length - 1];
-    if (!head) return;
-
-    const earlierTags = state.tags
-      .map((tag) => ({ tag, index: state.commits.findIndex((commit) => commit.sha === tag.sha) }))
-      .filter((entry) => entry.index >= 0 && entry.index < head.index)
-      .sort((a, b) => b.index - a.index);
-
-    const base = earlierTags[0]?.tag.sha ?? state.commits[0]?.sha;
-    if (!base || base === head.sha) {
-      // Nothing earlier to compare against; still open, with both ends the same,
-      // so the picker is there to change one.
-      controller.openCompare(head.sha, head.sha);
+  const openCompareView = useCallback(() => {
+    pushNext.current = true;
+    const existing = state.compare;
+    if (existing.draftBase && existing.draftHead) {
+      controller.setView('compare');
       return;
     }
-    controller.openCompare(base, head.sha, { base: earlierTags[0]?.tag.name ?? null });
-  }, [controller, currentCommit, state.commits, state.tags]);
+
+    const current = currentCommit ?? state.commits[state.commits.length - 1];
+    if (!current) {
+      controller.setView('compare');
+      return;
+    }
+
+    const previous = state.commits[current.index - 1];
+    const newest = state.commits[state.commits.length - 1]!;
+    const pair = previous
+      ? { base: previous, head: current }
+      : { base: current, head: newest };
+
+    if (pair.base.sha === pair.head.sha) {
+      // One commit in range: offer the pair and explain, rather than request it.
+      controller.prepareCompare(pair.base.sha, pair.head.sha);
+    } else {
+      controller.openCompare(pair.base.sha, pair.head.sha);
+    }
+  }, [controller, currentCommit, state.commits, state.compare]);
+
+  const selectView = useCallback(
+    (next: AppView) => {
+      if (next === view) return;
+      if (next === 'compare') {
+        openCompareView();
+        return;
+      }
+      pushNext.current = true;
+      controller.setView(next);
+    },
+    [controller, openCompareView, view],
+  );
 
   const pickCompareEnd = useCallback(
     (side: 'base' | 'head', choice: PickerChoice) => {
-      controller.setCompareEnd(side, choice.sha, choice.tagName);
+      controller.setCompareDraft(side, choice.sha, choice.tagName);
     },
     [controller],
   );
 
-  const closeCompare = useCallback(() => {
-    controller.closeCompare();
-    // Hand the address bar back to the timeline.
-    if (state.ref && currentCommit) writeUrl(state.ref, currentCommit.sha, 'push');
-  }, [controller, state.ref, currentCommit, writeUrl]);
+  const submitCompare = useCallback(() => {
+    pushNext.current = true;
+    controller.submitCompare();
+  }, [controller]);
 
-  const seekFromCompare = useCallback(
+  /** The one place a comparison is allowed to move the replay. */
+  const openInReplay = useCallback(
     (index: number) => {
-      controller.closeCompare();
+      pushNext.current = true;
+      controller.setView('replay');
       dispatch({ type: 'seek', index });
     },
     [controller, dispatch],
   );
 
-  const seek = useCallback(
-    (index: number, options: { push?: boolean } = {}) => {
-      if (options.push) {
-        const target = state.commits[index];
-        if (target) lastPushedRef.current = target.sha;
-      }
+  const inspectFromInsights = useCallback(
+    (index: number) => {
+      pushNext.current = true;
+      controller.setView('replay');
       dispatch({ type: 'seek', index });
     },
-    [dispatch, state.commits],
+    [controller, dispatch],
   );
 
   // ---------------------------------------------------------------- playback
@@ -209,6 +262,10 @@ export function TimeMachine() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Playback shortcuts belong to the replay, and to nothing on top of it.
+      if (view !== 'replay') return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -266,7 +323,7 @@ export function TimeMachine() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dispatch, playback.index, playback.speed]);
+  }, [dispatch, playback.index, playback.speed, view]);
 
   // ---------------------------------------------------------------- derived
 
@@ -277,9 +334,9 @@ export function TimeMachine() {
     [controller, playback.index, state.version],
   );
 
-  // Projections at the two ends of a comparison, for the side-by-side column.
+  // Projections at the two ends of a comparison, for the statistics table.
   const compareProjections = useMemo(() => {
-    if (!state.compare.open || !state.compare.data) return { base: null, head: null };
+    if (view !== 'compare' || !state.compare.data) return { base: null, head: null };
     const find = (sha: string) => state.commits.find((commit) => commit.sha.startsWith(sha));
     const base = find(state.compare.data.base.sha);
     const head = find(state.compare.data.head.sha);
@@ -288,7 +345,7 @@ export function TimeMachine() {
       head: head ? controller.projector.project(head.index) : null,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controller, state.commits, state.compare.open, state.compare.data, state.version]);
+  }, [controller, state.commits, view, state.compare.data, state.version]);
 
   const commitMilestones = useMemo(
     () => state.milestones.filter((milestone) => milestone.commitIndex === playback.index),
@@ -297,182 +354,162 @@ export function TimeMachine() {
 
   const detail = currentCommit ? (controller.details.get(currentCommit.sha) ?? null) : null;
 
-  const rangeLabel = useMemo(() => {
-    const count = state.commits.length;
-    if (count === 0) return 'no commits loaded';
-    if (state.totalCommits === null) return `${formatNumber(count)} commits loaded`;
-    if (count >= state.totalCommits) return `full history — ${formatNumber(count)} commits`;
-    return `latest ${formatNumber(count)} of ${formatNumber(state.totalCommits)} commits`;
-  }, [state.commits.length, state.totalCommits]);
+  const rangeLabel = useMemo(
+    () => describePlayableRange(state.commits.length, state.totalCommits),
+    [state.commits.length, state.totalCommits],
+  );
 
   const busy = state.status === 'loading';
-  const showTimeline = state.status === 'ready' && state.commits.length > 0;
+  const ready = state.status === 'ready' && state.commits.length > 0;
   // Comes from the server, never inferred from a label.
   const isBuiltin = state.meta?.dataSource === 'builtin';
+  const title = isBuiltin ? BUILTIN_DEMO.title : (state.ref?.slug ?? 'Repository');
 
   return (
     <div className={styles.shell}>
       <a className={styles.skipLink} href="#main">
-        Skip to the timeline
+        {SKIP_LABEL[view]}
       </a>
 
-      {/* Exactly one H1 in every state: the landing screen provides its own, so
-          this one only appears once a repository or the demo is open. */}
-      {state.status === 'idle' ? null : (
-        <h1 className="visually-hidden">
-          {state.compare.open
-            ? `${isBuiltin ? BUILTIN_DEMO.title : (state.ref?.slug ?? 'Repository')} — comparing two points`
-            : isBuiltin
-              ? `${BUILTIN_DEMO.title} — built-in demo timeline`
-              : `${state.ref?.slug ?? 'Repository'} — commit timeline`}
-        </h1>
-      )}
+      <TopBar
+        repoLabel={state.status === 'idle' ? null : (state.ref?.slug ?? null)}
+        onChangeRepo={() => setOverlay('repo')}
+        onOpenHelp={() => setOverlay('help')}
+      />
 
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <BrandMark />
-          <span className={styles.brandText}>
-            <span className={styles.brandName}>Repo Time Machine</span>
-            <span className={styles.brandSub}>git history, played back</span>
-          </span>
-        </div>
-
-        <div className={styles.headerMain}>
-          {/* The landing screen has its own, larger field; two would be noise. */}
-          {state.status === 'idle' ? null : (
-            <RepoInput current={state.ref} busy={busy} onSubmit={openRepo} />
-          )}
-        </div>
-
-        <div className={styles.headerAside}>
-          {isBuiltin ? (
-            <p className={styles.builtinBadge}>
-              <BuiltinGlyph />
-              {BUILTIN_DEMO.badge}
-              <span className={styles.builtinCost}>&middot; 0 GitHub requests</span>
-            </p>
-          ) : state.status === 'idle' ? null : (
-            <RateLimitMeter
-              snapshot={state.rateLimit}
-              ageMs={state.rateLimitAgeMs}
-              tokenConfigured={state.tokenConfigured}
-            />
-          )}
-          <a
-            className={styles.sourceLink}
-            href="https://github.com/renrenmimi/RepoTimeMachine"
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            Source
-          </a>
-        </div>
-      </header>
-
-      <div className={styles.sourceBar} hidden={state.status === 'idle'}>
-        {isBuiltin ? (
-          <p className={styles.sourceNote}>
-            <span className={styles.sourceStrong}>{BUILTIN_DEMO.title}</span>
-            {/* Repeated in full in the insights panel, so it can drop on a phone. */}
-            <span className={styles.sourceDetail}>{BUILTIN_DEMO.disclosure}</span>
-          </p>
-        ) : (
-          <p className={styles.sourceNote}>
-            <span className={styles.sourceStrong}>Live repository</span>
-            <span className={styles.sourceDetail}>Read from GitHub&rsquo;s public REST API.</span>
-          </p>
-        )}
-        <span className={styles.sourceSpacer} />
-        {showTimeline && !state.compare.open ? (
-          <button type="button" className={styles.sourceButton} onClick={openCompare}>
-            <CompareGlyph />
-            Compare
-          </button>
-        ) : null}
-        {isBuiltin ? null : (
-          <button type="button" className={styles.sourceButton} onClick={openBuiltinDemo}>
-            <BuiltinGlyph />
-            Built-in demo
-          </button>
-        )}
-        {state.ref ? (
-          <button type="button" className={styles.sourceButton} onClick={clearRepo}>
-            Start over
-          </button>
-        ) : null}
-      </div>
-
-      <div className={styles.notices} role="status" aria-live="polite">
-        {state.notices.map((notice) => (
-          <p key={notice} className={styles.notice}>
-            <span className={styles.noticeIcon} aria-hidden="true">
-              !
-            </span>
-            {notice}
-          </p>
-        ))}
-      </div>
-
-      <main className={styles.stage} id="main">
-        {state.status === 'idle' ? (
-          <Landing onOpenDemo={openBuiltinDemo} onSelect={openRepo} busy={busy} />
-        ) : null}
-
-        {state.status === 'loading' ? <LoadingState slug={state.ref?.slug ?? null} /> : null}
-
-        {state.status === 'error' && state.error ? (
-          <ErrorState
-            error={state.error}
-            slug={state.ref?.slug ?? null}
-            onRetry={() => state.ref && void controller.load(state.ref)}
-            onClear={clearRepo}
+      {state.status === 'idle' ? (
+        <main className={styles.stage} id="main">
+          <Landing
             onOpenDemo={openBuiltinDemo}
+            onSelect={openRepo}
+            onOpenHelp={() => setOverlay('help')}
+            busy={busy}
           />
-        ) : null}
+        </main>
+      ) : (
+        <>
+          <div className={styles.workspaceHead}>
+            <div className={styles.titleRow}>
+              <h1 className={styles.title} title={state.ref?.slug ?? undefined}>
+                {title}
+              </h1>
+              <SourceStatus meta={state.meta} loading={busy} />
+              {!isBuiltin && state.meta ? (
+                <div className={styles.usage}>
+                  <GitHubUsage
+                    snapshot={state.rateLimit}
+                    ageMs={state.rateLimitAgeMs}
+                    tokenConfigured={state.tokenConfigured}
+                    onOpenDemo={openBuiltinDemo}
+                  />
+                </div>
+              ) : null}
+            </div>
 
-        {state.status === 'ready' && state.commits.length === 0 ? (
-          <EmptyRepoState slug={state.ref?.slug ?? ''} onClear={clearRepo} />
-        ) : null}
+            <nav className={styles.viewTabs} role="tablist" aria-label="What to look at">
+              {VIEWS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  className={styles.viewTab}
+                  aria-selected={view === item.id}
+                  aria-controls="main"
+                  tabIndex={view === item.id ? 0 : -1}
+                  disabled={!ready && item.id !== 'replay'}
+                  onClick={() => selectView(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </div>
 
-        {showTimeline && state.compare.open ? (
-          <ComparePanel
-            compare={state.compare}
-            commits={state.commits}
-            tags={state.tags}
-            baseProjection={compareProjections.base}
-            headProjection={compareProjections.head}
-            onPick={pickCompareEnd}
-            onSwap={controller.swapCompare}
-            onClose={closeCompare}
-            onSeek={seekFromCompare}
-          />
-        ) : null}
+          {state.densify.active ? (
+            <DensifyBar done={state.densify.done} target={state.densify.target} />
+          ) : null}
 
-        {showTimeline && !state.compare.open ? (
-          <div className={styles.grid}>
-            <TreePanel
-              className={styles.gridTree}
-              projection={projection}
-              commits={state.commits}
-              currentIndex={playback.index}
-              details={controller.details}
-              loading={state.snapshotCount === 0}
-              version={state.version}
-              onSeek={(index) => seek(index, { push: true })}
-            />
+          {state.notices.length > 0 ? (
+            <div className={styles.notices} role="status" aria-live="polite">
+              {state.notices.map((notice) => (
+                <p key={notice} className={styles.notice}>
+                  <span className={styles.noticeIcon} aria-hidden="true">
+                    !
+                  </span>
+                  {notice}
+                </p>
+              ))}
+            </div>
+          ) : null}
 
-            <CommitPanel
-              className={styles.gridCommit}
-              commit={currentCommit}
-              previous={playback.index > 0 ? (state.commits[playback.index - 1] ?? null) : null}
-              detail={detail}
-              detailPending={Boolean(currentCommit) && !detail}
-              milestones={commitMilestones}
-              playing={playback.playing && !reducedMotion}
-            />
+          <main className={styles.stage} id="main">
+            {state.status === 'loading' ? <LoadingState slug={state.ref?.slug ?? null} /> : null}
 
-            <InsightsPanel
-                className={styles.gridInsights}
+            {state.status === 'error' && state.error ? (
+              <ErrorState
+                error={state.error}
+                slug={state.ref?.slug ?? null}
+                onRetry={() => state.ref && void controller.load(state.ref)}
+                onClear={() => setOverlay('repo')}
+                onOpenDemo={openBuiltinDemo}
+              />
+            ) : null}
+
+            {state.status === 'ready' && state.commits.length === 0 ? (
+              <EmptyRepoState slug={state.ref?.slug ?? ''} onClear={() => setOverlay('repo')} />
+            ) : null}
+
+            {ready && view === 'replay' ? (
+              <ReplayView
+                commits={state.commits}
+                playback={playback}
+                currentCommit={currentCommit}
+                previousCommit={playback.index > 0 ? (state.commits[playback.index - 1] ?? null) : null}
+                detail={detail}
+                detailPending={Boolean(currentCommit) && !detail}
+                details={controller.details}
+                projection={projection}
+                commitMilestones={commitMilestones}
+                milestones={state.milestones}
+                tags={state.tags}
+                totalCommits={state.totalCommits}
+                hasOlder={state.hasOlder}
+                loadingOlder={state.loadingOlder}
+                canLoadOlder={state.pagesLoaded < MAX_PAGES}
+                snapshotLoading={state.snapshotCount === 0}
+                rangeLabel={rangeLabel}
+                version={state.version}
+                reducedMotion={reducedMotion}
+                onSeek={seek}
+                onPlayPause={() => dispatch({ type: 'toggle' })}
+                onNext={() => dispatch({ type: 'next' })}
+                onPrevious={() => dispatch({ type: 'previous' })}
+                onLatest={() => seek(state.commits.length - 1, { push: true })}
+                onSpeed={(speed) => dispatch({ type: 'setSpeed', speed })}
+                onLoadOlder={() => void controller.loadOlder()}
+                onPause={controller.pausePlayback}
+                onShowMilestones={() => selectView('insights')}
+              />
+            ) : null}
+
+            {ready && view === 'compare' ? (
+              <CompareView
+                compare={state.compare}
+                commits={state.commits}
+                tags={state.tags}
+                tagsStatus={state.tagsStatus}
+                baseProjection={compareProjections.base}
+                headProjection={compareProjections.head}
+                onPick={pickCompareEnd}
+                onSwap={controller.swapCompareDraft}
+                onSubmit={submitCompare}
+                onRetry={controller.retryCompare}
+                onOpenInReplay={openInReplay}
+              />
+            ) : null}
+
+            {ready && view === 'insights' ? (
+              <InsightsView
                 meta={state.meta}
                 commits={state.commits}
                 currentIndex={playback.index}
@@ -480,92 +517,68 @@ export function TimeMachine() {
                 growth={state.growth}
                 activity={state.activity}
                 milestones={state.milestones}
+                densify={state.densify}
                 totalCommits={state.totalCommits}
                 hasOlder={state.hasOlder}
                 loadingOlder={state.loadingOlder}
                 canLoadOlder={state.pagesLoaded < MAX_PAGES}
-                onSeek={(index) => seek(index, { push: true })}
+                onInspect={inspectFromInsights}
+                onSeek={(index) => seek(index)}
                 onLoadOlder={() => void controller.loadOlder()}
               />
-          </div>
-        ) : null}
-      </main>
+            ) : null}
+          </main>
+        </>
+      )}
 
-      {showTimeline && !state.compare.open ? (
-        <div className={styles.transportSlot}>
-          {state.densify.active ? (
-            <DensifyBar done={state.densify.done} target={state.densify.target} />
-          ) : null}
-          <Transport
-            playback={playback}
-            commits={state.commits}
-            milestones={state.milestones}
-            rangeLabel={rangeLabel}
-            disabled={false}
-            onPlayPause={() => dispatch({ type: 'toggle' })}
-            onNext={() => dispatch({ type: 'next' })}
-            onPrevious={() => dispatch({ type: 'previous' })}
-            onSeek={(index) => seek(index)}
-            onSpeed={(speed) => dispatch({ type: 'setSpeed', speed })}
-          />
-        </div>
+      {overlay === 'repo' ? (
+        <Overlay title="Open a repository" onClose={() => setOverlay(null)}>
+          <div className={styles.repoOverlay}>
+            {/* Cancelling leaves whatever is loaded exactly as it was. */}
+            <RepoInput
+              current={state.ref}
+              busy={busy}
+              onSubmit={openRepo}
+              onCancel={() => setOverlay(null)}
+              autoFocus
+              emphasis="primary"
+            />
+            {!isBuiltin ? (
+              <button type="button" className={styles.overlayDemo} onClick={openBuiltinDemo}>
+                Explore the built-in demo instead
+              </button>
+            ) : null}
+            {state.ref ? (
+              <button type="button" className={styles.overlayClear} onClick={clearRepo}>
+                Start over from the home screen
+              </button>
+            ) : null}
+          </div>
+        </Overlay>
+      ) : null}
+
+      {overlay === 'help' ? (
+        <Overlay title="How it works" onClose={() => setOverlay(null)}>
+          <HowItWorks />
+        </Overlay>
       ) : null}
     </div>
   );
 }
 
+/** Background diff loading, as a hairline. It is progress, not a headline. */
 function DensifyBar({ done, target }: { done: number; target: number }) {
   const share = target === 0 ? 0 : Math.min(1, done / target);
   return (
     <div
-      style={{
-        height: 2,
-        background: 'var(--line-faint)',
-        position: 'relative',
-      }}
+      className={styles.densify}
       role="progressbar"
       aria-label="Loading commit diffs in the background"
       aria-valuemin={0}
       aria-valuemax={target}
       aria-valuenow={done}
     >
-      <span
-        style={{
-          position: 'absolute',
-          inset: '0 auto 0 0',
-          width: `${share * 100}%`,
-          background: 'var(--signal-dim)',
-          transition: 'width var(--duration) var(--ease-out)',
-        }}
-      />
+      <span className={styles.densifyFill} style={{ width: `${share * 100}%` }} />
     </div>
-  );
-}
-
-function CompareGlyph() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-      <rect x="1" y="2.2" width="3.6" height="7.6" rx="1" />
-      <rect x="7.4" y="2.2" width="3.6" height="7.6" rx="1" />
-    </svg>
-  );
-}
-
-function BrandMark() {
-  return (
-    <svg className={styles.brandMark} viewBox="0 0 64 64" aria-hidden="true">
-      <rect width="64" height="64" rx="12" fill="var(--surface-inset)" />
-      <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="11.25" fill="none" stroke="var(--line)" strokeWidth="1.5" />
-      <circle cx="21" cy="26" r="9" fill="none" stroke="var(--signal-dim)" strokeWidth="2.5" />
-      <circle cx="21" cy="26" r="2.5" fill="var(--signal)" />
-      <circle cx="43" cy="26" r="6" fill="none" stroke="var(--signal-dim)" strokeWidth="2.5" />
-      <circle cx="43" cy="26" r="2" fill="var(--signal)" />
-      <path d="M21 35 Q32 41 43 32" fill="none" stroke="var(--line-strong)" strokeWidth="2" strokeLinecap="round" />
-      <line x1="12" y1="49" x2="52" y2="49" stroke="var(--line-strong)" strokeWidth="2" strokeLinecap="round" />
-      <line x1="18" y1="45.5" x2="18" y2="52.5" stroke="var(--signal-dim)" strokeWidth="2" strokeLinecap="round" />
-      <line x1="26" y1="45.5" x2="26" y2="52.5" stroke="var(--signal-dim)" strokeWidth="2" strokeLinecap="round" />
-      <line x1="34" y1="44" x2="34" y2="54" stroke="var(--amber)" strokeWidth="2.5" strokeLinecap="round" />
-      <line x1="42" y1="45.5" x2="42" y2="52.5" stroke="var(--signal-dim)" strokeWidth="2" strokeLinecap="round" />
-    </svg>
   );
 }

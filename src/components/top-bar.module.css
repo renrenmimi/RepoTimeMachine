@@ -1,0 +1,154 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--topbar-height);
+  flex-shrink: 0;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-page);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.brandMark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.brandName {
+  font-size: var(--text-lede);
+  font-weight: var(--weight-strong);
+  line-height: 24px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* The short identifier of whatever is open. The full name is in the heading. */
+.repoChip {
+  min-width: 0;
+  padding: 2px var(--space-2);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.action {
+  composes: buttonQuiet from './controls.module.css';
+}
+
+/* -------------------------------------------------------------------- theme */
+
+.theme {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+}
+
+.themeOption {
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 18px;
+  transition: background-color var(--duration) var(--ease-out), color var(--duration) var(--ease-out);
+}
+
+.themeOption:hover {
+  color: var(--text-primary);
+}
+
+.themeOption[aria-checked='true'] {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(27, 41, 34, 0.08);
+}
+
+/* ------------------------------------------------------------- narrow menu */
+
+.menuButton {
+  composes: button from './controls.module.css';
+  height: 36px;
+  padding: 0 var(--space-3);
+}
+
+.menuBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.menuItem {
+  composes: button from './controls.module.css';
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.menuTheme {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.menuThemeLabel {
+  composes: fieldLabel from './controls.module.css';
+}
+
+.menuTheme .theme {
+  align-self: flex-start;
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 1099px) {
+  /* The padding tightens; the theme names stay, because 10px labels do not. */
+  .themeOption {
+    padding: 0 6px;
+  }
+}
+
+@media (max-width: 899px) {
+  .bar {
+    gap: var(--space-2);
+    padding: 0 var(--space-4);
+  }
+
+  .repoChip {
+    display: none;
+  }
+}
+
+@media (max-width: 599px) {
+  .bar {
+    padding: 0 var(--space-3);
+  }
+}

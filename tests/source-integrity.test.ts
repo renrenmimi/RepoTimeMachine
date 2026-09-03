@@ -31,7 +31,7 @@ describe('tracked source files are text', () => {
   it('finds files to check, so the guard cannot pass vacuously', () => {
     expect(files.length).toBeGreaterThan(40);
     expect(files).toContain('src/components/ComparePicker.tsx');
-    expect(files).toContain('src/components/ComparePanel.tsx');
+    expect(files).toContain('src/components/CompareView.tsx');
   });
 
   it('contains no NUL byte anywhere', () => {

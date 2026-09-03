@@ -20,12 +20,13 @@ describe('parseAppUrl', () => {
       repo: expect.objectContaining({ slug: 'a/b' }),
       commit: null,
       compare: null,
+      view: 'replay',
     });
   });
 
   it('returns the empty state for an empty query', () => {
-    expect(parseAppUrl('')).toEqual({ repo: null, commit: null, compare: null });
-    expect(parseAppUrl('?')).toEqual({ repo: null, commit: null, compare: null });
+    expect(parseAppUrl('')).toEqual({ repo: null, commit: null, compare: null, view: 'replay' });
+    expect(parseAppUrl('?')).toEqual({ repo: null, commit: null, compare: null, view: 'replay' });
   });
 
   it('accepts a leading question mark or a URLSearchParams', () => {
@@ -42,8 +43,14 @@ describe('parseAppUrl', () => {
       repo: null,
       commit: null,
       compare: null,
+      view: 'replay',
     });
-    expect(parseAppUrl('?repo=nonsense')).toEqual({ repo: null, commit: null, compare: null });
+    expect(parseAppUrl('?repo=nonsense')).toEqual({
+      repo: null,
+      commit: null,
+      compare: null,
+      view: 'replay',
+    });
   });
 
   it('drops a malformed commit but keeps the repository', () => {
@@ -53,7 +60,7 @@ describe('parseAppUrl', () => {
   });
 
   it('ignores a commit with no repository, since it means nothing on its own', () => {
-    expect(parseAppUrl('?c=6cc6ba6')).toEqual({ repo: null, commit: null, compare: null });
+    expect(parseAppUrl('?c=6cc6ba6')).toEqual({ repo: null, commit: null, compare: null, view: 'replay' });
   });
 
   it('accepts a full GitHub URL in the repo parameter', () => {
@@ -172,5 +179,65 @@ describe('comparison in the URL', () => {
     expect(sameUrlState(a, { ...a })).toBe(true);
     expect(sameUrlState(a, { ...a, compare: { base: head, head: base } })).toBe(false);
     expect(sameUrlState(a, { ...a, compare: null })).toBe(false);
+  });
+});
+
+describe('the view in the URL', () => {
+  const base = 'a'.repeat(40);
+  const head = 'b'.repeat(40);
+
+  it('defaults to the replay, which is what an old link describes', () => {
+    expect(parseAppUrl('?repo=a%2Fb&c=6cc6ba6').view).toBe('replay');
+    expect(parseAppUrl('?repo=a%2Fb').view).toBe('replay');
+  });
+
+  it('reads and writes the insights view', () => {
+    expect(parseAppUrl('?repo=a%2Fb&view=insights').view).toBe('insights');
+    const url = buildAppUrl({ repo: ref('a/b'), commit: null, compare: null, view: 'insights' });
+    expect(url).toContain('view=insights');
+    expect(parseAppUrl(url.replace('/?', '?')).view).toBe('insights');
+  });
+
+  it('keeps the playhead in an insights link, so returning to the replay lands there', () => {
+    const url = buildAppUrl({ repo: ref('a/b'), commit: 'c'.repeat(40), compare: null, view: 'insights' });
+    expect(url).toContain(`c=${'c'.repeat(10)}`);
+    expect(parseAppUrl(url.replace('/?', '?')).commit).toBe('c'.repeat(10));
+  });
+
+  it('leaves the replay view out of the URL, since it is the default', () => {
+    const url = buildAppUrl({ repo: ref('a/b'), commit: 'c'.repeat(40), compare: null, view: 'replay' });
+    expect(url).not.toContain('view=');
+  });
+
+  it('treats a pair of endpoints as the compare view, named or not', () => {
+    // Every comparison link handed out before `view` existed looks like this.
+    expect(parseAppUrl(`?repo=a%2Fb&base=${base}&head=${head}`).view).toBe('compare');
+    expect(parseAppUrl(`?repo=a%2Fb&base=${base}&head=${head}&view=insights`).view).toBe('compare');
+  });
+
+  it('writes no view parameter for a comparison, keeping old links byte-identical', () => {
+    const url = buildAppUrl({ repo: ref('a/b'), commit: null, compare: { base, head }, view: 'compare' });
+    expect(url).not.toContain('view=');
+    expect(url).toContain('base=');
+  });
+
+  it('falls back safely for an unknown or hostile view value', () => {
+    for (const value of ['dashboard', '', 'REPLAY', '../../etc', 'compare']) {
+      // `compare` among them: it is not reachable without endpoints, so naming
+      // it alone must not open an empty comparison.
+      expect(parseAppUrl(`?repo=a%2Fb&view=${encodeURIComponent(value)}`).view).toBe('replay');
+    }
+  });
+
+  it('ignores a view with no repository', () => {
+    expect(parseAppUrl('?view=insights').view).toBe('replay');
+  });
+
+  it('distinguishes views in sameUrlState', () => {
+    const a = { repo: ref('a/b'), commit: 'c'.repeat(40), compare: null, view: 'replay' as const };
+    expect(sameUrlState(a, { ...a })).toBe(true);
+    expect(sameUrlState(a, { ...a, view: 'insights' })).toBe(false);
+    // An omitted view means the replay, so it is not a different state.
+    expect(sameUrlState(a, { repo: a.repo, commit: a.commit, compare: null })).toBe(true);
   });
 });

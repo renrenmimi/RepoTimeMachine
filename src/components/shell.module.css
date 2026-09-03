@@ -1,382 +1,214 @@
+/*
+ * The application shell.
+ *
+ * On a tall enough screen the frame is fixed and only the content inside a view
+ * scrolls, so the heading, the player and the current commit stay where they
+ * were put. On short and narrow screens the page scrolls normally instead of
+ * being forced into a viewport it does not fit.
+ */
+
 .shell {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  min-height: 100dvh;
-  background:
-    radial-gradient(120% 80% at 50% -10%, rgba(123, 203, 141, 0.05), transparent 60%),
-    var(--surface-base);
-}
-
-/* ------------------------------------------------------------------ header */
-
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.brandMark {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-}
-
-.brandText {
   display: flex;
   flex-direction: column;
-  line-height: 1.05;
+  min-height: 100dvh;
+  background: var(--bg-page);
 }
 
-.brandName {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--text-bright);
-  white-space: nowrap;
-}
+/* -------------------------------------------------------- workspace heading */
 
-.brandSub {
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
-.headerMain {
-  flex: 1 1 300px;
-  min-width: 0;
-  max-width: 460px;
-}
-
-.headerAside {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+/*
+ * The chrome above the content: a 56px bar, a title row and the view tabs.
+ * Together about 148px, which is the budget — the rest of the window belongs
+ * to the repository.
+ */
+.workspaceHead {
   flex-shrink: 0;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-page);
 }
 
-.sourceLink {
-  font-size: var(--text-xs);
-  color: var(--text-dim);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.sourceLink:hover {
-  color: var(--text);
-}
-
-/* On a phone the brand and the read-outs share the first row, and the field
-   takes the second, instead of stacking into three. */
-@media (max-width: 719px) {
-  .header {
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .brand {
-    order: 1;
-  }
-
-  .headerAside {
-    order: 2;
-  }
-
-  .headerMain {
-    order: 3;
-    flex: 1 1 100%;
-    max-width: none;
-  }
-
-  .brandSub {
-    display: none;
-  }
-}
-
-/* ------------------------------------------------------------- source bar */
-
-.sourceBar[hidden] {
-  display: none;
-}
-
-.sourceBar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--line-faint);
-  min-width: 0;
-}
-
-.sourceNote {
+.titleRow {
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
   min-width: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: var(--space-2) 0 6px;
 }
 
-.sourceStrong {
+.title {
   flex-shrink: 0;
+  max-width: 100%;
+  font-size: var(--text-2xl);
   font-weight: 600;
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  font-size: var(--text-3xs);
-  color: var(--text-dim);
+  line-height: 34px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
-.sourceDetail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.usage {
+  margin-left: auto;
+  align-self: center;
 }
 
-/* On a phone the mode name is enough; the sentence is repeated in the panel. */
-@media (max-width: 620px) {
-  .sourceDetail {
-    display: none;
-  }
+.viewTabs {
+  composes: tabList from './controls.module.css';
 }
 
-.sourceSpacer {
-  flex: 1;
-}
-
-.sourceButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  padding: 3px var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: var(--text-2xs);
-  color: var(--text-dim);
-  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
-}
-
-.sourceButton:hover {
-  border-color: var(--line-signal);
-  color: var(--text-bright);
-}
-
-/* The built-in marker never relies on colour alone: it carries a glyph and text. */
-.builtinBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px var(--space-2);
-  border: 1px solid var(--line-signal);
-  border-radius: var(--radius);
-  background: var(--signal-wash);
-  font-size: var(--text-2xs);
-  color: var(--signal);
-  white-space: nowrap;
-}
-
-.builtinCost {
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  color: var(--signal-dim);
-}
-
-@media (max-width: 520px) {
-  .builtinCost {
-    display: none;
-  }
+.viewTab {
+  composes: tab from './controls.module.css';
 }
 
 /* ------------------------------------------------------------------- stage */
 
 .stage {
-  min-width: 0;
+  flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg-surface);
 }
 
-.grid {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  gap: 0;
-}
-
-/* Narrow screens read as a sequence: what changed, then the tree, then stats. */
-@media (max-width: 899px) {
-  .gridCommit {
-    order: 1;
-  }
-
-  .gridTree {
-    order: 2;
-  }
-
-  .gridInsights {
-    order: 3;
-  }
-}
-
-@media (min-width: 900px) {
-  .grid {
-    display: grid;
-    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .gridTree {
-    grid-row: 1 / span 2;
-    border-right: 1px solid var(--line);
-  }
-}
-
-@media (min-width: 1180px) {
+/*
+ * One scroll region, inside the view.
+ *
+ * Above this width the frame is pinned and the view manages its own scrolling,
+ * which is what keeps the player and the tree on screen together.
+ */
+@media (min-width: 900px) and (min-height: 620px) {
   .shell {
     height: 100dvh;
     overflow: hidden;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   }
 
   .stage {
-    min-height: 0;
     overflow: hidden;
   }
-
-  .grid {
-    grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--stats-width);
-    grid-template-rows: minmax(0, 1fr);
-    height: 100%;
-  }
-
-  .gridTree {
-    grid-row: 1;
-  }
-
-  .gridInsights {
-    border-left: 1px solid var(--line);
-  }
 }
 
-/* ------------------------------------------------------------------ panels */
+/* ---------------------------------------------------------------- densify */
 
-.panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--surface-panel);
-  border-bottom: 1px solid var(--line);
-}
-
-.panelHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--line-faint);
+.densify {
+  position: relative;
   flex-shrink: 0;
+  height: 2px;
+  background: var(--bg-subtle);
 }
 
-.panelTitle {
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
-.panelHeadSpacer {
-  flex: 1;
-}
-
-.panelBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-@media (max-width: 1179px) {
-  .panelBody {
-    max-height: 65vh;
-  }
-}
-
-/* -------------------------------------------------------------- transport */
-
-.transportSlot {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  background: color-mix(in srgb, var(--surface-void) 94%, transparent);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--line-strong);
+.densifyFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--action-bg);
+  transition: width var(--duration) var(--ease-out);
 }
 
 /* ---------------------------------------------------------------- notices */
 
 .notices {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
 
 .notice {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: var(--amber-wash);
-  border-bottom: 1px solid color-mix(in srgb, var(--amber) 22%, transparent);
-  font-size: var(--text-xs);
-  color: var(--amber-bright);
+  padding: var(--space-2) var(--space-6);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: var(--text-sm);
+  line-height: 20px;
 }
 
 .noticeIcon {
   flex-shrink: 0;
-  margin-top: 2px;
+  font-weight: 600;
 }
+
+/* -------------------------------------------------------------- skip link */
 
 .skipLink {
   position: absolute;
   left: var(--space-3);
   top: var(--space-3);
-  z-index: 60;
+  z-index: 90;
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-raised);
-  border: 1px solid var(--signal-dim);
-  border-radius: var(--radius);
-  color: var(--text-bright);
-  font-size: var(--text-xs);
+  border: 1px solid var(--focus-ring);
+  border-radius: var(--radius-control);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-decoration: none;
   transform: translateY(-200%);
-  transition: transform var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration) var(--ease-out);
 }
 
 .skipLink:focus {
   transform: translateY(0);
+}
+
+/* ---------------------------------------------------------- repo overlay */
+
+.repoOverlay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.overlayDemo {
+  composes: button from './controls.module.css';
+  align-self: flex-start;
+}
+
+.overlayClear {
+  composes: buttonQuiet from './controls.module.css';
+  align-self: flex-start;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 1199px) {
+  .workspaceHead {
+    padding: 0 var(--space-5);
+  }
+
+  .notice {
+    padding: var(--space-2) var(--space-5);
+  }
+}
+
+@media (max-width: 899px) {
+  .workspaceHead {
+    padding: 0 var(--space-4);
+  }
+
+  .title {
+    font-size: var(--text-xl);
+    line-height: 32px;
+  }
+
+  .usage {
+    margin-left: 0;
+  }
+
+  .notice {
+    padding: var(--space-2) var(--space-4);
+  }
+
+  /* Tabs may scroll sideways in their own strip rather than shrink the text. */
+  .viewTabs {
+    gap: var(--space-4);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .viewTabs::-webkit-scrollbar {
+    display: none;
+  }
 }
