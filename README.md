@@ -722,11 +722,14 @@ RTM_FIXTURE_MODE=1 npx next start -p 3311 &
 RTM_BASE_URL=http://127.0.0.1:3311 npm run screenshots
 ```
 
-Writes twenty deterministic screenshots to `docs/screenshots/` (not committed) —
-each view at 1440, 1280, 1024, 390 and 360px, in both themes — and reports any
+Writes twenty deterministic PNGs to `docs/screenshots/` (not committed) — each
+view at 1440, 1280, 1024, 390 and 360px, in both themes — and reports any
 horizontal overflow or console error it finds along the way. Everything it
 captures comes from the built-in demo or the fixtures, so it never reads a real
 repository.
+
+The `review-*.jpg` files in the same directory *are* committed: they are the
+smaller, dated record attached to the pull request that introduced a change.
 
 ## Local development
 
