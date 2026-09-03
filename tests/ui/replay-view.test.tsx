@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ReplayView } from '@/components/ReplayView';
+import { ReplayView, type SubView } from '@/components/ReplayView';
+import { EMPTY_TREE_VIEW, type TreeViewState } from '@/components/TreePanel';
 import { initialPlaybackState } from '@/lib/playback/machine';
 import type { Milestone } from '@/lib/milestones/detect';
 import type { Projection } from '@/lib/tree/projector';
@@ -32,6 +34,31 @@ function projection(
   };
 }
 
+/**
+ * The shell, as far as the replay can tell.
+ *
+ * The sub-view, the diff focus and the tree's own state are held above
+ * `ReplayView` in the real application — it unmounts on a view change — so the
+ * harness has to hold them too for the interactions to behave as they do there.
+ */
+function Harness(props: Omit<Parameters<typeof ReplayView>[0], 'subView' | 'onSubView' | 'diffFocus' | 'onDiffFocus' | 'treeView' | 'onTreeView'>) {
+  const [subView, setSubView] = useState<SubView>('repository');
+  const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
+  const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
+
+  return (
+    <ReplayView
+      {...props}
+      subView={subView}
+      onSubView={setSubView}
+      diffFocus={diffFocus}
+      onDiffFocus={setDiffFocus}
+      treeView={treeView}
+      onTreeView={setTreeView}
+    />
+  );
+}
+
 function setup(overrides: Partial<Parameters<typeof ReplayView>[0]> = {}) {
   const handlers = {
     onSeek: vi.fn(),
@@ -46,7 +73,7 @@ function setup(overrides: Partial<Parameters<typeof ReplayView>[0]> = {}) {
   };
   const current = (overrides.currentCommit ?? range[0]) as (typeof range)[number];
   render(
-    <ReplayView
+    <Harness
       commits={range}
       playback={{ ...initialPlaybackState(range.length, current.index) }}
       currentCommit={current}

@@ -40,9 +40,6 @@ export function Overlay({ title, variant = 'dialog', onClose, children }: Props)
      * yet, so the active element is still the trigger.
      */
     const opener = document.activeElement as HTMLElement | null;
-    // The first control, or the surface itself when it holds only text.
-    const first = surface.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? surface).focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -69,6 +66,11 @@ export function Overlay({ title, variant = 'dialog', onClose, children }: Props)
     /*
      * The page keeps its scroll position: `overflow: hidden` alone would let the
      * document jump to the top and then jump back when the overlay closes.
+     *
+     * Captured *before* anything inside the overlay is focused. Focusing an
+     * element scrolls it into view, and the overlay's own first control is
+     * pinned to the top of the viewport — so focusing first meant reading a
+     * scroll position of 0 and losing wherever the visitor actually was.
      */
     const { body } = document;
     const scrollY = window.scrollY;
@@ -83,6 +85,11 @@ export function Overlay({ title, variant = 'dialog', onClose, children }: Props)
     body.style.top = `-${scrollY}px`;
     body.style.width = '100%';
 
+    // The first control, or the surface itself when it holds only text. Without
+    // `preventScroll` this is the call that used to move the page.
+    const first = surface.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? surface).focus({ preventScroll: true });
+
     document.addEventListener('keydown', onKeyDown, true);
 
     return () => {
@@ -91,10 +98,24 @@ export function Overlay({ title, variant = 'dialog', onClose, children }: Props)
       body.style.position = previous.position;
       body.style.top = previous.top;
       body.style.width = previous.width;
+
+      /*
+       * Restoring the position takes two deliberate steps.
+       *
+       * While the overlay was open the body was `position: fixed`, so the
+       * document was only as tall as the viewport. Scrolling immediately after
+       * putting the styles back asks the browser to scroll a document it has not
+       * re-measured yet, and it clamps to whatever fits — which sent a page
+       * scrolled to 900px back to 0. Reading a layout property forces the
+       * measurement first.
+       *
+       * And focusing an element scrolls it into view, so the trigger is given
+       * the focus without the scrolling; returning focus is what makes the
+       * keyboard path a loop rather than a one-way trip into the document.
+       */
+      void document.documentElement.scrollHeight;
       window.scrollTo(0, scrollY);
-      // Returning focus to the trigger is what makes the keyboard path a loop
-      // rather than a one-way trip into the document.
-      opener?.focus?.();
+      opener?.focus?.({ preventScroll: true });
     };
   }, [close]);
 

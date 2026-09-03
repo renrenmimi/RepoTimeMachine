@@ -10,11 +10,11 @@ import { ChangesPanel } from './ChangesPanel';
 import { HistoryColumn } from './HistoryColumn';
 import { Overlay } from './Overlay';
 import { Transport } from './Transport';
-import { TreePanel } from './TreePanel';
+import { TreePanel, type TreeViewState } from './TreePanel';
 import { useMediaQuery } from './hooks';
 import styles from './replay.module.css';
 
-type SubView = 'repository' | 'changes';
+export type SubView = 'repository' | 'changes';
 
 type Props = {
   commits: Commit[];
@@ -46,6 +46,16 @@ type Props = {
   onLoadOlder: () => void;
   onPause: () => void;
   onShowMilestones: () => void;
+  /*
+   * Held by the shell rather than here, because this component unmounts on a
+   * view change and every one of these is something the visitor chose.
+   */
+  subView: SubView;
+  onSubView: (next: SubView) => void;
+  diffFocus: { path: string } | null;
+  onDiffFocus: (next: { path: string } | null) => void;
+  treeView: TreeViewState;
+  onTreeView: (next: TreeViewState) => void;
 };
 
 /**
@@ -81,10 +91,14 @@ export function ReplayView(props: Props) {
     onLoadOlder,
     onPause,
     onShowMilestones,
+    subView,
+    onSubView,
+    diffFocus,
+    onDiffFocus,
+    treeView,
+    onTreeView,
   } = props;
 
-  const [subView, setSubView] = useState<SubView>('repository');
-  const [focus, setFocus] = useState<{ path: string } | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
 
   /*
@@ -125,8 +139,8 @@ export function ReplayView(props: Props) {
    */
   const openDiff = (path: string) => {
     onPause();
-    setSubView('changes');
-    setFocus({ path });
+    onSubView('changes');
+    onDiffFocus({ path });
   };
 
   const changedCount = detail?.changedFiles ?? projection.changes.size;
@@ -215,7 +229,7 @@ export function ReplayView(props: Props) {
             aria-selected={subView === 'repository'}
             aria-controls="subpanel-repository"
             tabIndex={subView === 'repository' ? 0 : -1}
-            onClick={() => setSubView('repository')}
+            onClick={() => onSubView('repository')}
           >
             Repository
           </button>
@@ -228,8 +242,8 @@ export function ReplayView(props: Props) {
             aria-controls="subpanel-changes"
             tabIndex={subView === 'changes' ? 0 : -1}
             onClick={() => {
-              setSubView('changes');
-              setFocus(null);
+              onSubView('changes');
+              onDiffFocus(null);
             }}
           >
             Changes
@@ -251,6 +265,8 @@ export function ReplayView(props: Props) {
               details={details}
               loading={snapshotLoading}
               version={version}
+              view={treeView}
+              onView={onTreeView}
               onSeek={(index) => onSeek(index, { push: true })}
               onOpenDiff={openDiff}
             />
@@ -261,7 +277,7 @@ export function ReplayView(props: Props) {
               detail={detail}
               pending={detailPending}
               playing={playback.playing && !reducedMotion}
-              focus={focus}
+              focus={diffFocus}
               onOpenPatch={onPause}
             />
           </div>

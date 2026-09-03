@@ -16,8 +16,9 @@ import { CompareView } from './CompareView';
 import type { PickerChoice } from './ComparePicker';
 import { InsightsView } from './InsightsView';
 import { Overlay } from './Overlay';
-import { ReplayView } from './ReplayView';
+import { ReplayView, type SubView } from './ReplayView';
 import { RepoInput } from './RepoInput';
+import { EMPTY_TREE_VIEW, type TreeViewState } from './TreePanel';
 import { GitHubUsage, SourceStatus } from './SourceStatus';
 import { EmptyRepoState, ErrorState, HowItWorks, Landing, LoadingState } from './States';
 import { TopBar } from './TopBar';
@@ -49,6 +50,18 @@ export function TimeMachine() {
   );
 
   const [overlay, setOverlay] = useState<'repo' | 'help' | null>(null);
+
+  /*
+   * Replay's own view state lives here, not in `ReplayView`.
+   *
+   * That component unmounts when the visitor switches to Compare or Insights,
+   * so anything it held locally was gone on the way back: the sub-view reset to
+   * Repository, the path filter emptied, folders the visitor had opened closed
+   * again. All of it is something they chose, so the shell keeps it.
+   */
+  const [subView, setSubView] = useState<SubView>('repository');
+  const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
+  const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
 
   const playback = state.playback;
   const currentCommit = state.commits[playback.index] ?? null;
@@ -122,6 +135,10 @@ export function TimeMachine() {
     (ref: RepoRef) => {
       pushNext.current = true;
       setOverlay(null);
+      // A different repository has a different tree, so none of that carries over.
+      setSubView('repository');
+      setDiffFocus(null);
+      setTreeView(EMPTY_TREE_VIEW);
       void controller.load(ref);
     },
     [controller],
@@ -497,6 +514,12 @@ export function TimeMachine() {
                 onLoadOlder={() => void controller.loadOlder()}
                 onPause={controller.pausePlayback}
                 onShowMilestones={() => selectView('insights')}
+                subView={subView}
+                onSubView={setSubView}
+                diffFocus={diffFocus}
+                onDiffFocus={setDiffFocus}
+                treeView={treeView}
+                onTreeView={setTreeView}
               />
             ) : null}
 

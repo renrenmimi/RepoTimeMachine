@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import type { Commit, CommitDetail } from '@/lib/domain/types';
 import { formatBytes, formatNumber, splitPath } from '@/lib/format';
 import { classifyPath, kindLabel } from '@/lib/tree/classify';
@@ -18,6 +18,26 @@ import styles from './tree-panel.module.css';
 /** Must match the row height in the stylesheet, or virtualisation drifts. */
 const ROW_HEIGHT = 34;
 
+/**
+ * What the visitor has done to the tree, held outside this component.
+ *
+ * The panel unmounts when the view changes, so keeping any of this locally
+ * meant coming back from Compare or Insights found a collapsed, unfiltered tree
+ * with nothing selected — losing work the visitor had done to get there.
+ */
+export type TreeViewState = {
+  filter: string;
+  /** Only the folders the visitor toggled themselves. */
+  overrides: ReadonlyMap<string, boolean>;
+  selectedPath: string | null;
+};
+
+export const EMPTY_TREE_VIEW: TreeViewState = {
+  filter: '',
+  overrides: new Map(),
+  selectedPath: null,
+};
+
 type Props = {
   projection: Projection;
   commits: Commit[];
@@ -27,6 +47,8 @@ type Props = {
   /** Bumped whenever the controller loads new data; used as a memo dependency. */
   version: number;
   className?: string;
+  view: TreeViewState;
+  onView: (next: TreeViewState) => void;
   onSeek: (index: number) => void;
   /** Opens this file's diff in the Changes view, on the same commit. */
   onOpenDiff: (path: string) => void;
@@ -40,6 +62,8 @@ export function TreePanel({
   loading,
   version,
   className,
+  view,
+  onView,
   onSeek,
   onOpenDiff,
 }: Props) {
@@ -49,11 +73,12 @@ export function TreePanel({
    * The default is "open what is small enough to read"; on top of that, every
    * folder containing a change in this commit is opened so the change is
    * visible. `overrides` holds only the folders the visitor toggled themselves,
-   * which is what should survive moving along the history.
+   * which is what should survive moving along the history — and moving away
+   * from the replay and back.
    */
-  const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-  const [filter, setFilter] = useState('');
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const { filter, overrides, selectedPath } = view;
+  const setFilter = (next: string) => onView({ ...view, filter: next });
+  const setSelectedPath = (next: string | null) => onView({ ...view, selectedPath: next });
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const root = useMemo(
@@ -94,12 +119,9 @@ export function TreePanel({
   );
 
   const toggle = (path: string) => {
-    const isOpen = expanded.has(path);
-    setOverrides((current) => {
-      const next = new Map(current);
-      next.set(path, !isOpen);
-      return next;
-    });
+    const next = new Map(overrides);
+    next.set(path, !expanded.has(path));
+    onView({ ...view, overrides: next });
   };
 
   return (

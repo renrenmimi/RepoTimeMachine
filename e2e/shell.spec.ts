@@ -18,6 +18,7 @@ import {
   REPOS,
   repoUrl,
   subTab,
+  transport,
   viewTab,
   watchApi,
   watchGitHub,
@@ -555,6 +556,42 @@ test.describe('layout', () => {
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveValue('4');
     // The position is still visible after the drawer closes.
     await expect(page.locator('#replay-position')).toContainText('Commit 5 of 16');
+  });
+
+  test('the drawer leaves the page where it was, open and closed', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openRepo(page, REPOS.demo);
+    // A long enough page for the position to be worth keeping.
+    await transport(page).slider.fill('8');
+    await page.waitForTimeout(900);
+    await subTab(page, 'Changes').click();
+    await page.waitForTimeout(400);
+
+    const trigger = page.getByRole('button', { name: /^History/ });
+
+    for (const target of [0, 120, 200]) {
+      await page.evaluate((y) => window.scrollTo(0, y), target);
+      await page.waitForTimeout(200);
+
+      /*
+       * Dispatched rather than clicked, so the position under test is the one
+       * the page is at — a normal click scrolls the button into view first,
+       * which would measure Playwright rather than the application.
+       */
+      await trigger.evaluate((element) => (element as HTMLElement).click());
+      await expect(page.getByRole('dialog', { name: 'History' })).toBeVisible();
+
+      // Locked at the offset it was opened at: the page behind does not jump to
+      // the top, which is what happened while the overlay focused its first
+      // control before reading the scroll position.
+      await expect
+        .poll(() => page.evaluate(() => document.body.style.top))
+        .toBe(target === 0 ? '0px' : `-${target}px`);
+
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(target);
+    }
   });
 
   test('the drawer closes on Escape and returns focus to its trigger', async ({ page }) => {
