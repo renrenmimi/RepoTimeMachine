@@ -1,6 +1,7 @@
 # Repo Time Machine
 
-Turn the Git history of a repository into a timeline you can play.
+See how a repository took shape: step through its commits, inspect what each one
+changed, and compare any two points.
 
 There are two ways in:
 
@@ -9,13 +10,13 @@ There are two ways in:
 - **any public GitHub repository** — paste `owner/repository` or a URL and it
   reads the default branch through GitHub's REST API.
 
-Either way, the tool reconstructs the file tree at each commit and lets you scrub
+Either way, the tool reconstructs the file tree at each commit and lets you step
 or play through the history while the tree fills in, files change, and the commit
 detail follows along.
 
-![The built-in demo playing: working tree, commit detail, growth chart and the scrubbable timeline](docs/timeline.jpg)
+![The built-in demo at commit 10 of 16: the commit history on the left, and the commit, the player and the reconstructed file tree on the right](docs/timeline.jpg)
 
-*The built-in demo at its final commit — the working tree on the left, the commit and its diff in the middle, growth and file-type mix on the right, and the scrubbable timeline along the bottom. The badge in the corner reads `0 GitHub requests`, because this history ships with the app.*
+*The built-in demo at commit 10 of 16 — the history on the left, and on the right the commit, a one-line summary of what it changed, the player, and the file tree as it stood at that point. The line under the title reads `Built-in demo · 0 GitHub requests`, because this history ships with the app.*
 
 It answers questions that are awkward to answer on GitHub itself:
 
@@ -27,6 +28,26 @@ It answers questions that are awkward to answer on GitHub itself:
 - how a handful of files turned into an application.
 
 No login. No cloning. Public repositories only.
+
+## Three views
+
+One question at a time, chosen from the tabs under the repository's name.
+
+| View | The question it answers |
+| --- | --- |
+| **Replay** | What did this repository look like at this commit, and what did this commit change? |
+| **Compare** | What is different between these two points? |
+| **Insights** | How did the size and the structure change across the loaded history? |
+
+`Replay` is two columns: the commit history on the left, and on the right the
+selected commit, the player, and one of two sub-views — `Repository` for the
+file tree as it stood there, `Changes` for the diff. Both sub-views sit under the
+same heading and the same player, so moving between them never loses your place.
+
+Arriving on a repository puts the playhead on the **earliest commit in the loaded
+range**, paused. Stepping forward from the start is the point of the tool;
+arriving at the finished repository shows a result instead. A link that names a
+commit always wins over that default, and `Latest` is one click away.
 
 ---
 
@@ -57,13 +78,19 @@ Because it ships with the application:
 
 - it makes **zero GitHub requests** and needs no token;
 - it is identical for every visitor, so a shared link always shows the same thing;
-- every timeline position is **exact**, because a full tree is stored for all
+- every position in the replay is **exact**, because a full tree is stored for all
   sixteen commits.
 
-The interface says which mode you are in. Built-in data carries a
-`Built-in demo · 0 GitHub requests` badge, the GitHub quota meter is hidden, and
-commits show their sha as plain text rather than as a link, because there is no
-repository to open.
+The interface says which mode you are in, in one place, under the repository's
+name. Built-in data reads `Built-in demo · 0 GitHub requests`, the GitHub usage
+disclosure is hidden entirely, and commits show their sha as plain text rather
+than as a link, because there is no repository to open.
+
+"GitHub requests", not "API requests": the browser does call this application's
+own routes for the demo. It never calls GitHub. And the mode comes from the
+server's `dataSource` field, never inferred from the slug you typed — until that
+answer arrives the line reads `Loading source…` rather than claiming a live
+repository it has not yet reached.
 
 ### Why it replaced a list of real projects
 
@@ -96,17 +123,25 @@ accounts and go down the ordinary GitHub path.
 This is the part most similar tools are vague about, so it is stated everywhere
 in the interface.
 
-The timeline covers a **contiguous range of commits ending at the tip of the
+The replay covers a **contiguous range of commits ending at the tip of the
 default branch**. On load, up to the latest **300 commits** are fetched (three
 pages of 100). If the repository has fewer than that, the whole history is
-loaded and the label reads `full history — 64 commits`. If it has more, the label
-reads `latest 300 of 1,204 commits`, and the Commits tab offers
-`Load 100 older commits`, up to a hard ceiling of 1,000.
+loaded; if it has more, `Load 100 older commits` extends the range backwards, up
+to a hard ceiling of 1,000 per session.
+
+The range is stated in two places, in two different words, because they answer
+two different questions:
+
+| Where | Full history | Partial history |
+| --- | --- | --- |
+| The history list, "how long is this list" | `All 64 commits` | `Latest 300 of 1,204 commits` |
+| Under the player, "does the track start at the beginning" | `the whole history, 64 commits` | `part of the history, 300 of 1,204 commits` |
 
 Consequences worth knowing:
 
-- For a large repository, commit #1 on the timeline is **not** the repository's
-  first commit. It is the oldest commit currently loaded.
+- For a large repository, commit 1 in the replay is **not** the repository's
+  first commit. It is the oldest commit currently loaded, and `Insights` says so
+  before any figure that depends on it.
 - Only the default branch is read. Work that lives on other branches is invisible
   unless it was merged.
 - Commit counts come from GitHub's pagination header, so they are exact rather
@@ -124,7 +159,7 @@ GitHub offers two relevant primitives, and neither one alone is enough:
 Fetching a tree per commit would be one request per frame of playback, which is
 untenable. So the application reads full trees at a bounded number of
 **checkpoint commits** spread across the loaded range, and fetches per-commit
-diffs in the background. Any position on the timeline is then *"the nearest
+diffs in the background. Any position in the replay is then *"the nearest
 checkpoint at or before here, plus every diff since"*.
 
 The tree panel states which case it is in:
@@ -159,25 +194,41 @@ When you stop on a commit, one extra tree request upgrades that position to
 
 ## Comparing two points
 
-The timeline answers *what did this commit do*. A second view answers *what is
-different between these two points*, which is not the same question: it needs the
-net difference, not the sum of the commits in between.
+`Replay` answers *what did this commit do*. `Compare` answers *what is different
+between these two points*, which is not the same question: it needs the net
+difference, not the sum of the commits in between.
 
-Pick either end from a tag or from any commit in the loaded range. Comparing two
-releases is the case this was built for, so tags come first in both pickers.
+The two ends are `From` and `To`, equally weighted, with `base` and `head` in
+small print — those words are the answer to a question a newcomer has not asked
+yet. Either end can be a tag or any commit in the loaded range.
 
-What it shows:
+**Choosing the ends and reading the answer are two steps.** Moving a selector
+costs nothing; pressing `Compare` is what spends a request. Without that split, a
+visitor adjusting both ends pays for a comparison nobody wanted to see — and an
+old result would end up sitting under new endpoints. Whenever the selection and
+the loaded result disagree, the result is put away rather than relabelled.
 
-- the relation (`ahead`, `behind`, `identical`, `diverged`) and how far;
-- the net per-file difference, with expandable diffs;
-- the commits between the two points;
-- the two ends measured against each other — file counts, tracked bytes,
-  top-level folders, which folders appeared or disappeared, and the file-type mix
-  on a shared colour scale.
+Opening it from the replay proposes a pair and runs it once: the step before the
+current commit and the current commit. At the very first commit there is no step
+before it, so the proposal is the whole loaded range instead — never a commit
+compared with itself, which would answer nothing.
 
-Swapping the ends reads the difference backwards and says `behind`. A comparison
-owns the address bar while it is open (`?repo=…&base=…&head=…`), so a link opens
-straight into it and Back returns to the timeline.
+What the result shows:
+
+- the relation (`ahead`, `behind`, `identical`, `diverged`) as a sentence whose
+  subject is the end that moved, plus the file and line totals;
+- one row of three figures — changed files, lines added, lines removed;
+- `File changes`, the net per-file difference with expandable diffs;
+- `Commits`, the commits between the two points, each with `Open in Replay`;
+- `Repository stats`, the two ends measured against each other — file counts,
+  tracked bytes, top-level folders, which folders appeared or disappeared, and
+  the file-type mix on a shared colour scale.
+
+Swapping the ends changes the selection; running it reads the difference
+backwards and says `behind`. Two ends that name the same commit are answered
+without a request at all. A comparison that has actually run owns the address bar
+(`?repo=…&base=…&head=…`), so a link opens straight into it — and choosing
+endpoints never moves the replay, which only `Open in Replay` does.
 
 ### Where the numbers come from
 
@@ -205,6 +256,27 @@ when exactly one recorded hunk **is** that change. If a file was touched more
 than once between the two points, no single hunk describes the difference, so the
 file reports `changed more than once` and shows only the summed line counts.
 Showing one commit's hunk as the whole change would be wrong.
+
+## Sharing and the address bar
+
+The whole visible state is in the query string, so any view can be linked to.
+
+| Parameter | Meaning |
+| --- | --- |
+| `repo` | `owner/repository`, or a GitHub URL, validated before anything is fetched |
+| `c` | the selected commit, full or abbreviated sha |
+| `base`, `head` | the two ends of a comparison |
+| `view` | `insights`; `replay` is the default and so is left off |
+
+A pair of endpoints *is* what makes a link a comparison, named or not, which is
+what keeps every link handed out before `view` existed working exactly as it did.
+An unrecognised `view` falls back to the replay rather than failing, and `view`
+alone cannot open an empty comparison.
+
+Only a comparison that has actually run appears in the URL — a draft describes
+nothing, so there is nothing to share. Deliberate acts push a history entry, so
+Back undoes the thing that was just done; playback replaces, so a minute of
+playing does not bury the entry the visitor arrived on.
 
 ## GitHub API architecture
 
@@ -371,9 +443,14 @@ the boundary is drawn.
 
 ## Milestone heuristics
 
-The Milestones tab marks commits that look structurally interesting. Every entry
-states the rule that fired and the evidence, because these are pattern matches —
+`Insights` lists the commits that look structurally interesting, and the replay
+notes them in one compact line on the commit they belong to. Every entry states
+the rule that fired and the evidence, because these are pattern matches —
 **they do not know what anyone intended.**
+
+Several rules routinely match the same commit, so the list is grouped by commit
+and says so: "15 milestones across 9 commits". A milestone count is not a count
+of commits, and neither is a count of project phases.
 
 Rules that need only commit metadata, so they always apply:
 
@@ -409,7 +486,7 @@ Each path milestone also reports **how sure it is about the position**:
   commit that first touched the path;
 - **narrowed to commits X–Y** — we only know it happened somewhere in that range,
   because the diffs in between are not loaded. It is anchored at the earliest
-  commit it could be, and drawn faintly on the timeline.
+  commit it could be, and drawn faintly on the player's track.
 
 ### Limitations of the heuristics
 
@@ -428,8 +505,11 @@ Each path milestone also reports **how sure it is about the position**:
 
 ## Statistics
 
-The growth view shows cumulative file count, per-commit additions and deletions,
-an estimated file-type mix, and where work happened.
+`Insights` is a page, read downwards: the scope of the loaded range first, then
+cumulative file count and per-commit churn, then the milestones, then an
+estimated file-type mix and where work happened. Nothing on it describes the
+repository as a whole — only the commits that are loaded, which the summary at
+the top states before any figure appears.
 
 Every part is labelled with what it is:
 
@@ -447,9 +527,19 @@ Every part is labelled with what it is:
 - **Where work happened** attributes changed files to their top-level directory in
   time buckets, and states how many diffs it was built from.
 
+- **The horizontal axis is commit order, not elapsed time.** Points are evenly
+  spaced whether two commits are a minute or a year apart, and the axis says so
+  rather than letting the spacing imply the other reading. The dates at each end
+  are shown alongside it.
+
 Charts have a text alternative: the growth chart has a "Read this chart as a
 table" disclosure with the sampled values, and every chart carries a descriptive
-`aria-label`.
+`aria-label`. Hovering is never the only way to a value.
+
+Chart colours come from the theme tokens, so the charts follow the light and dark
+palettes with the rest of the interface. A file type keeps the same colour
+wherever it appears, because the mapping is derived from the name rather than
+from its position in the current ranking.
 
 ## Accessibility
 
@@ -463,11 +553,35 @@ table" disclosure with the sampled values, and every chart carries a descriptive
 - `prefers-reduced-motion: reduce` replaces transitions with immediate state
   changes — every duration token collapses to 1ms and looping animations are
   switched off rather than merely shortened. Playback itself still works.
-- Change states are conveyed by more than colour: markers change shape, deleted
-  paths are struck through, and each row carries visually hidden text such as
+- Change states are conveyed by more than colour: every marker carries a symbol
+  (`+`, `−`, `→`, `~`), deleted paths are struck through, each changed file states
+  its status in words, and tree rows carry visually hidden text such as
   "added in this commit".
-- The insights panel is a proper tab list with arrow-key navigation.
-- No horizontal scrolling at 360px, checked by an assertion rather than by eye.
+- The three views and both sets of sub-views are proper tab lists.
+- Dialogs and the narrow-screen history drawer close on `Escape`, keep focus
+  inside while open, lock the page behind them without losing its scroll
+  position, and return focus to whatever opened them.
+- Playback shortcuts belong to the replay: they stand down in another view, while
+  a text field has focus, and while a modal is open.
+- Contrast is measured rather than eyeballed. Every text role was checked against
+  every surface it is used on, in both themes: 24 pairs, all at or above 4.5:1
+  for text and 3:1 for controls, borders, focus rings and chart strokes. The
+  tightest is the control border at 3.11:1 against the page.
+- Controls are 40px tall, 44px where the pointer is coarse.
+- Text sizes stop at 12px. Limitations are never delegated to smaller type.
+- No horizontal scrolling at 1440, 1280, 1024, 390 or 360px, checked by an
+  assertion rather than by eye. Only a diff box and the comparison's statistics
+  table scroll sideways, and each does so within its own named container.
+
+### Themes
+
+Light, Dark and System. Light is the default for a visitor whose system has no
+preference; `System` writes no attribute at all, so the palette keeps following
+the operating system with no JavaScript involved. An explicit choice is stored
+and applied by a tiny inline script before the first paint, so the other theme
+never flashes. Dark is its own palette rather than an inversion — its reading
+surface is *lighter* than its page, which an inverted light theme gets backwards.
+Changing the theme fetches nothing and reloads nothing.
 
 ## Performance
 
@@ -476,14 +590,33 @@ Explicit goals, and how they are met:
 | Goal | How |
 | --- | --- |
 | The shell paints before any GitHub data | The page is static; the client reads the address bar in an effect and fetches after mount. An e2e test asserts zero API calls on the landing screen. |
-| No thousands of DOM nodes | Both the file tree and the commit list are virtualised at a fixed row height, with a `maxRows` ceiling on the tree. |
+| No thousands of DOM nodes | Both the file tree (34px rows) and the commit history (64px rows) are virtualised at a fixed row height, with a `maxRows` ceiling on the tree. Row heights are fixed in the stylesheet and matched by the measurement, so a subject that would wrap is truncated with the full text in the heading rather than left to desynchronise the arithmetic. |
 | No repeated fetching | LRU plus in-flight de-duplication in the browser, plus the Next.js data cache on the server. Trees GitHub refused are remembered so they are not retried. |
 | Sequential playback stays cheap | Tree projections are cached per commit index and each step reuses the previous one, so stepping forward is O(1) amortised rather than replaying the whole range. |
 | No blocking work every frame | Playback is one `setInterval` tick per commit (850ms at 1×, floored at 90ms at 8×). Scroll handlers coalesce into one state update per frame. |
 | No layout shift | The loading state reserves height, and panel widths are fixed by the grid rather than by content. |
 | No hydration warnings | The server renders the idle shell; nothing reads `window` during render. |
 | Few client dependencies | Runtime dependencies are `next`, `react`, `react-dom`, and `server-only`. Charts are hand-written SVG; virtualisation is about forty lines. |
-| No large payloads in `localStorage` | Nothing is written to `localStorage` at all. |
+| No large payloads in `localStorage` | One key, `rtm-theme`, holding one of three words. Nothing else. |
+| No webfont in front of the first pixel | System sans and system monospace. There is no font to download. |
+| Interaction does not mean a request | Switching view, switching sub-view, opening a diff, expanding evidence and changing the theme all fetch nothing. Measured: see below. |
+
+### Requests for one session
+
+Counted with the browser's own network log against a production build, built-in
+demo, one repository view (`0` of them reach `github.com`):
+
+| Step | Requests to this application |
+| --- | --- |
+| Initial load, fully settled | 45 — `repo` 1, `commits` 1, `commit` 16, `tree` 16, `tags` 1, `probe` 10 |
+| Sub-views, opening a diff, `Insights`, changing the theme twice | **+0** |
+| Opening `Compare` (runs the proposed pair once) | +1 |
+| Moving both endpoint selectors and pressing Swap | **+0** |
+| Pressing `Compare` | +1 |
+
+The initial figure is the same as before this interface was rewritten, endpoint
+by endpoint. The two rows in bold are the ones that changed: drafting a
+comparison used to cost one request per pick and per swap.
 
 ## Testing
 
@@ -589,9 +722,11 @@ RTM_FIXTURE_MODE=1 npx next start -p 3311 &
 RTM_BASE_URL=http://127.0.0.1:3311 npm run screenshots
 ```
 
-Writes deterministic desktop, 390px and 360px screenshots to
-`docs/screenshots/` (not committed) and reports any horizontal overflow or
-console error it finds along the way.
+Writes twenty deterministic screenshots to `docs/screenshots/` (not committed) —
+each view at 1440, 1280, 1024, 390 and 360px, in both themes — and reports any
+horizontal overflow or console error it finds along the way. Everything it
+captures comes from the built-in demo or the fixtures, so it never reads a real
+repository.
 
 ## Local development
 
@@ -641,13 +776,30 @@ only cache is Next.js's data cache and whatever the CDN keeps.
 src/
   app/
     api/gh/*/route.ts   route handlers; the only code that talks to GitHub
-    layout.tsx          metadata, fonts, theme
+    layout.tsx          metadata and the pre-paint theme script
     page.tsx            static shell
     icon.svg            favicon
     opengraph-image.tsx build-time Open Graph card
-  components/           the interface, one CSS module per component
+  components/
+    TimeMachine.tsx     the shell: controller, URL, keyboard, which view is open
+    TopBar.tsx          brand, global actions, theme control
+    SourceStatus.tsx    where the data came from, and the GitHub quota
+    ReplayView.tsx      commit heading, player, Repository/Changes sub-views
+    HistoryColumn.tsx   the commit list (virtualised)
+    TreePanel.tsx       the file tree at a commit (virtualised)
+    ChangesPanel.tsx    what the commit changed
+    FileChangeList.tsx  changed files and diffs, shared with Compare
+    CompareView.tsx     endpoint selection and the net difference
+    ComparePicker.tsx   one end of a comparison
+    InsightsView.tsx    the statistics page
+    Charts.tsx          hand-written SVG, driven by the theme tokens
+    States.tsx          home screen, How it works, errors, empty, loading
+    Overlay.tsx         the shared modal: focus, Escape, scroll lock
+    controls.module.css the button, tab, field and surface primitives
   lib/
     repo-ref.ts         input parsing and validation (the security boundary)
+    theme.ts            theme preference, shared by the boot script and the UI
+    range.ts            how the loaded range is worded, in one place
     builtin/            the curated demo: fixture data and its local provider
     domain/types.ts     the types the UI works against
     github/             HTTP client, adapter, service, fixtures, rate-limit store
@@ -659,7 +811,7 @@ src/
     playback/machine.ts the pure playback reducer
     url/state.ts        URL serialisation
     cache/lru.ts        LRU with in-flight de-duplication
-  styles/tokens.css     every colour, size, duration and radius
+  styles/tokens.css     every colour, size, duration and radius, light and dark
 fixtures/               recorded and synthetic GitHub payloads
 scripts/                fixture recorder, live smoke test, screenshots
 tests/                  Vitest
@@ -668,7 +820,12 @@ e2e/                    Playwright
 
 The pieces worth reading first are `src/lib/tree/projector.ts` (how a tree is
 reconstructed), `src/lib/client/history-controller.ts` (how requests are budgeted
-and cancelled) and `src/lib/builtin/` (the demo, and how it stays off the network).
+and cancelled, and how the compare draft avoids spending them) and
+`src/lib/builtin/` (the demo, and how it stays off the network).
+
+Every colour, size and duration lives in `src/styles/tokens.css`, and every
+button, tab, field and panel composes from `src/components/controls.module.css`,
+so a control is the same height and the same focus treatment in every view.
 
 ## Licence
 
