@@ -7,7 +7,6 @@ import type { Milestone } from '@/lib/milestones/detect';
 import type { ActivityMap, GrowthSeries } from '@/lib/stats/growth';
 import { estimateLanguages } from '@/lib/stats/growth';
 import type { Projection } from '@/lib/tree/projector';
-import { BUILTIN_DEMO } from '@/lib/demos';
 import { formatDate, formatNumber } from '@/lib/format';
 import { describeLoadedRange } from '@/lib/range';
 import { ActivityGrid, GrowthChart, LanguageBar } from './Charts';
@@ -248,7 +247,11 @@ function RepositoryFacts({ meta, totalCommits }: { meta: RepoMeta; totalCommits:
         </p>
       ) : null}
 
-      {/* No link is rendered when there is no repository to open. */}
+      {/*
+       * No link is rendered when there is no repository to open — and rather
+       * than repeat the synthetic-history sentence the source line already
+       * carries, this says the thing that is missing and why.
+       */}
       {meta.htmlUrl ? (
         <p className={styles.aboutText}>
           <a href={meta.htmlUrl} target="_blank" rel="noreferrer noopener">
@@ -256,7 +259,9 @@ function RepositoryFacts({ meta, totalCommits }: { meta: RepoMeta; totalCommits:
           </a>
         </p>
       ) : (
-        <p className={styles.aboutText}>{BUILTIN_DEMO.disclosure}</p>
+        <p className={styles.aboutText}>
+          There is nothing to open on GitHub: this history ships with the application.
+        </p>
       )}
     </section>
   );

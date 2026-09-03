@@ -273,9 +273,12 @@ test.describe('insights', () => {
 
     await expect(page.getByRole('heading', { name: 'About this repository' })).toBeVisible();
     await expect(page.getByRole('link', { name: /on GitHub/ })).toHaveCount(0);
-    await expect(page.getByText(/curated, synthetic history/).first()).toBeVisible();
+    await expect(page.getByText(/nothing to open on GitHub: this history ships with/)).toBeVisible();
     // Star and fork counts are meaningless for invented data, so they are absent.
     await expect(page.getByText('Stars')).toHaveCount(0);
+
+    // Said once per workspace, not once per block.
+    await expect(page.getByText(/curated, synthetic history — not a live GitHub repository/)).toHaveCount(1);
   });
 
   test('offers a text alternative for the growth chart', async ({ page }) => {
