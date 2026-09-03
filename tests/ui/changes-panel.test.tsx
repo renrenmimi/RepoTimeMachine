@@ -180,7 +180,8 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /logo\.png/ }));
-    expect(screen.getByText(/does not provide a text diff/)).toBeInTheDocument();
+    expect(screen.getByText('Binary file — no text diff exists')).toBeInTheDocument();
+    expect(screen.getByText(/no line-based diff for a binary file/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View this file on GitHub/ })).toBeInTheDocument();
   });
 
@@ -194,6 +195,7 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /huge\.json/ }));
+    expect(screen.getByText('Diff omitted by GitHub')).toBeInTheDocument();
     expect(screen.getByText(/too large/)).toBeInTheDocument();
   });
 
@@ -207,7 +209,8 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /mystery\.ts/ }));
-    expect(screen.getByText(/not the same as the file being unchanged/)).toBeInTheDocument();
+    expect(screen.getByText('No diff was provided')).toBeInTheDocument();
+    expect(screen.getByText(/not the same as the file being/)).toBeInTheDocument();
   });
 
   it('says an aggregated total is a total, not a net diff', async () => {
@@ -226,7 +229,8 @@ describe('ChangesPanel missing patches', () => {
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: /app\.ts/ }));
-    const text = screen.getByText(/changed more than once/);
+    expect(screen.getByText('Changed more than once in this range')).toBeInTheDocument();
+    const text = screen.getByText(/cannot produce a single net diff/);
     expect(text).toHaveTextContent(/totals across those changes/);
     expect(text).toHaveTextContent(/not the size of the net difference/);
   });
@@ -242,6 +246,54 @@ describe('ChangesPanel missing patches', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /demo\.ts/ }));
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('says a generated file is withheld on purpose, not missing', async () => {
+    render(
+      <ChangesPanel
+        {...base}
+        detail={detail(target.sha, [
+          fileChange({
+            path: 'package-lock.json',
+            status: 'added',
+            patch: null,
+            patchOmittedReason: 'generated',
+            additions: 1840,
+          }),
+        ])}
+      />,
+    );
+
+    // Marked before it is opened, from the path, exactly as the tree marks it.
+    expect(screen.getByText('generated')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /package-lock\.json/ }));
+    expect(screen.getByText('Generated file — diff deliberately not shown')).toBeInTheDocument();
+    // And it says the count is declared rather than taken from a diff.
+    expect(screen.getByText(/declared to be, not a count taken from a diff/)).toBeInTheDocument();
+  });
+
+  it('says a pure rename is complete, not missing', async () => {
+    render(
+      <ChangesPanel
+        {...base}
+        detail={detail(target.sha, [
+          fileChange({
+            path: 'components/library/library-card.tsx',
+            previousPath: 'components/library/lesson-card.tsx',
+            status: 'renamed',
+            patch: null,
+            patchOmittedReason: 'rename-only',
+            additions: 0,
+            deletions: 0,
+          }),
+        ])}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /library-card\.tsx/ }));
+    expect(screen.getByText('Moved, with no change to its content')).toBeInTheDocument();
+    expect(screen.getByText(/byte-for-byte identical/)).toBeInTheDocument();
   });
 
   it('says when a patch was cut short', async () => {

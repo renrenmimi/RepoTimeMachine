@@ -1,3 +1,4 @@
+import { diffText } from '@/lib/diff/unified';
 import type {
   Commit,
   CommitDetail,
@@ -27,6 +28,16 @@ export type LocalCompareSource = {
   detailOf(sha: string): CommitDetail | null;
   /** Tag name pointing at a commit, for labelling an endpoint. */
   tagOf(sha: string): string | null;
+  /**
+   * The text of one file at one commit, when the source holds it.
+   *
+   * `undefined` means "not present at that commit"; `null` means "present, but
+   * this source does not carry its content" — a generated file, say. A source
+   * that implements this gets a real net diff between any two points instead of
+   * a summary, because the difference can be computed rather than reassembled
+   * out of the intervening commits' hunks.
+   */
+  contentAt?(sha: string, path: string): string | null | undefined;
 };
 
 /** Resolves a full or abbreviated sha against a known history. */
@@ -130,6 +141,54 @@ function netFiles(
 
   const build = (path: string, status: FileChange['status'], previousPath: string | null): FileChange => {
     const touch = touches.get(path);
+
+    /*
+     * When the source carries content, the net difference is *computed* from the
+     * two versions. That is the whole answer, however many times the file was
+     * touched in between, and its line counts come from the same diff — so the
+     * numbers and the hunks cannot describe different changes.
+     *
+     * Always base to head, in the direction the visitor asked for. `forward`
+     * describes where head sits in the history, not which way to read: a
+     * comparison whose head precedes its base still describes head relative to
+     * base, so its additions are what head has that base does not.
+     */
+    if (source.contentAt) {
+      const fromText = source.contentAt(base.sha, path);
+      const toText = source.contentAt(head.sha, path);
+      const opaque = fromText === null || toText === null;
+
+      if (!opaque) {
+        const diff = diffText(fromText ?? '', toText ?? '');
+        return {
+          path,
+          previousPath,
+          status,
+          additions: diff.additions,
+          deletions: diff.deletions,
+          patch: diff.patch === '' ? null : diff.patch,
+          // An empty computed diff on a path that moved is a rename and nothing
+          // more, which is a complete answer rather than a missing one.
+          patchOmittedReason: diff.patch === '' ? (previousPath ? 'rename-only' : null) : null,
+          patchTruncated: false,
+          blobUrl: null,
+        };
+      }
+
+      // Content exists but is not carried: say which, rather than "not provided".
+      return {
+        path,
+        previousPath,
+        status,
+        additions: forward ? (touch?.additions ?? 0) : (touch?.deletions ?? 0),
+        deletions: forward ? (touch?.deletions ?? 0) : (touch?.additions ?? 0),
+        patch: null,
+        patchOmittedReason: 'generated',
+        patchTruncated: false,
+        blobUrl: null,
+      };
+    }
+
     const patches = touch?.patches ?? [];
     const recorded = patches.filter((patch): patch is string => Boolean(patch));
     // A single recorded hunk in the forward direction *is* the net difference;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileChange } from '@/lib/domain/types';
 import { formatNumber, splitPath } from '@/lib/format';
+import { classifyPath, kindLabel } from '@/lib/tree/classify';
 import styles from './file-changes.module.css';
 
 /**
@@ -132,6 +133,7 @@ function cssEscape(value: string): string {
 function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; onToggle: (path: string) => void }) {
   const { dir, name } = splitPath(file.path);
   const panelId = `patch-${file.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const kind = kindLabel(classifyPath(file.path).kind);
 
   return (
     <li className={styles.fileItem} data-status={file.status} data-path={file.path}>
@@ -150,6 +152,12 @@ function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; on
           <span className={styles.fileDir}>{dir}</span>
           <span className={styles.fileName}>{name}</span>
         </span>
+        {/*
+         * Said before the row is opened, so nothing looks readable and then
+         * turns out not to be. The label comes from the path, exactly as the
+         * file tree's does, so the two always agree.
+         */}
+        {kind ? <span className={styles.fileKind}>{kind}</span> : null}
         <span className={styles.fileStatusWord}>{statusWord(file.status)}</span>
         <span className={styles.fileNumbers}>
           {file.additions > 0 ? <span className={`${styles.plus} tabular`}>+{formatNumber(file.additions)}</span> : null}
@@ -273,19 +281,21 @@ function Patch({ file }: { file: FileChange }) {
  * Each reason is a different fact about the source, so none of them is allowed
  * to collapse into "no changes" — which is the one thing they all are not.
  */
+/**
+ * What is here instead of a diff, and why.
+ *
+ * Each reason is a different fact, so each gets its own sentence. The generic
+ * one is last on purpose: for a live repository "the source did not send one" is
+ * the truth, but for anything the application ships itself it would only mean
+ * the fixture was unfinished, which is why the built-in demo never reaches it.
+ */
 function PatchFallback({ file }: { file: FileChange }) {
-  const reason =
-    file.patchOmittedReason === 'binary'
-      ? 'GitHub does not provide a text diff for this file: it is binary, or its content did not change.'
-      : file.patchOmittedReason === 'too-large'
-        ? 'GitHub omitted the diff for this file because it is too large.'
-        : file.patchOmittedReason === 'aggregated'
-          ? 'This file changed more than once between the two points, and this source cannot produce a single net diff for it. The line counts above are the totals across those changes, not the size of the net difference.'
-          : 'This source did not provide a diff for this file. That is not the same as the file being unchanged.';
+  const detail = fallbackDetail(file);
 
   return (
-    <div className={styles.patchFallback} data-tone="warning">
-      <p>{reason}</p>
+    <div className={styles.patchFallback} data-tone={detail.tone}>
+      <p className={styles.patchFallbackTitle}>{detail.title}</p>
+      <p>{detail.body}</p>
       {file.blobUrl ? (
         <a href={file.blobUrl} target="_blank" rel="noreferrer noopener">
           View this file on GitHub
@@ -293,6 +303,62 @@ function PatchFallback({ file }: { file: FileChange }) {
       ) : null}
     </div>
   );
+}
+
+type Fallback = { tone: 'info' | 'warning'; title: string; body: string };
+
+function fallbackDetail(file: FileChange): Fallback {
+  switch (file.patchOmittedReason) {
+    case 'generated':
+      return {
+        // Not a caveat: withholding a lockfile diff is the right call, and the
+        // row said `generated` before it was opened.
+        tone: 'info',
+        title: 'Generated file — diff deliberately not shown',
+        body:
+          'This file is machine-written output. Its diff would be hundreds of lines of resolved ' +
+          'versions and would say nothing about how the history grew, so the content is not ' +
+          'carried. The line counts beside the path are the size this file is declared to be, ' +
+          'not a count taken from a diff.',
+      };
+    case 'binary':
+      return {
+        tone: 'info',
+        title: 'Binary file — no text diff exists',
+        body:
+          'There is no line-based diff for a binary file. The row is marked binary before it is ' +
+          'opened for that reason.',
+      };
+    case 'rename-only':
+      return {
+        tone: 'info',
+        title: 'Moved, with no change to its content',
+        body: `The file moved from ${file.previousPath ?? 'another path'} and its content is byte-for-byte identical, so an empty diff is the complete answer rather than a missing one.`,
+      };
+    case 'too-large':
+      return {
+        tone: 'warning',
+        title: 'Diff omitted by GitHub',
+        body: 'GitHub declined to produce a diff for this file because it is too large.',
+      };
+    case 'aggregated':
+      return {
+        tone: 'warning',
+        title: 'Changed more than once in this range',
+        body:
+          'This file was touched by several of the commits between the two points, and this ' +
+          'source cannot produce a single net diff for it. The line counts above are the totals ' +
+          'across those changes, not the size of the net difference.',
+      };
+    default:
+      return {
+        tone: 'warning',
+        title: 'No diff was provided',
+        body:
+          'The source did not send a diff for this file. That is not the same as the file being ' +
+          'unchanged — it changed, and what changed is not available here.',
+      };
+  }
 }
 
 function lineKind(line: string): 'add' | 'del' | 'hunk' | 'meta' | 'ctx' {

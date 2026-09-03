@@ -342,11 +342,30 @@ describe('privacy of the fixture content', () => {
     meta: builtinRepoMeta(),
   });
 
-  it('names no repository owner and links nowhere', () => {
+  it('names no repository owner and no code host', () => {
     // A curated history has no upstream, so it must not smell like one.
     expect(text).not.toContain('github.com');
-    expect(text).not.toContain('https://');
+    expect(text).not.toContain('gitlab');
+    expect(text).not.toContain('bitbucket');
     expect(text).not.toMatch(/\bgit@/);
+    expect(text).not.toMatch(/\bssh:\/\//);
+  });
+
+  it('links only to well-known schema and namespace hosts', () => {
+    /*
+     * The fixture's files are file *content*, and real config files carry an
+     * XML namespace or a JSON-schema URL. Forbidding every URL outright would
+     * make the content less credible without protecting anything; what matters
+     * is that nothing points at a repository, a person or a private host.
+     *
+     * The allowlist is asserted here so it cannot quietly grow.
+     */
+    const allowed = new Set(['www.w3.org', 'openapi.vercel.sh']);
+    const hosts = new Set(
+      [...text.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g)].map((match) => match[1]!),
+    );
+
+    expect([...hosts].sort()).toEqual([...allowed].sort());
   });
 
   it('contains no e-mail address', () => {
@@ -365,7 +384,7 @@ describe('privacy of the fixture content', () => {
   });
 
   it('uses paths that read as a generic learning product', () => {
-    const paths = new Set(DEMO_COMMITS.flatMap((commit) => commit.changes.map((change) => change.path)));
+    const paths = new Set(DEMO_COMMITS.flatMap((commit) => commit.files.map((op) => op.path)));
     expect(paths.size).toBeGreaterThan(50);
     for (const path of paths) {
       // Repository-relative, no absolute paths and no escapes.
