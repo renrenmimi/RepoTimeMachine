@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffLines, diffText, toLines } from '@/lib/diff/unified';
+import { diffLines, diffText, toLines, toSideBySide } from '@/lib/diff/unified';
 
 /** Applies a unified diff to `before` and returns the result, for round-tripping. */
 function apply(before: string[], patch: string): string[] {
@@ -196,5 +196,94 @@ describe('diffText round-trips', () => {
   it('never reports a change for text that only differs by a trailing newline', () => {
     // The trailing newline is a terminator, so these are the same three lines.
     expect(diffText('a\nb\nc', 'a\nb\nc\n').patch).toBe('');
+  });
+});
+
+describe('toSideBySide', () => {
+  it('pairs a replaced line onto one row', () => {
+    const patch = diffLines(['keep', 'old', 'keep2'], ['keep', 'new', 'keep2']).patch;
+    const rows = toSideBySide(patch);
+
+    expect(rows.map((row) => row.kind)).toEqual(['hunk', 'context', 'change', 'context']);
+    expect(rows[2]).toEqual({
+      kind: 'change',
+      oldNumber: 2,
+      newNumber: 2,
+      removed: 'old',
+      added: 'new',
+    });
+  });
+
+  it('leaves the other side empty for a pure insertion', () => {
+    const patch = diffLines(['a', 'b'], ['a', 'inserted', 'b']).patch;
+    const change = toSideBySide(patch).find((row) => row.kind === 'change');
+    expect(change).toEqual({
+      kind: 'change',
+      oldNumber: null,
+      newNumber: 2,
+      removed: null,
+      added: 'inserted',
+    });
+  });
+
+  it('leaves the other side empty for a pure deletion', () => {
+    const patch = diffLines(['a', 'gone', 'b'], ['a', 'b']).patch;
+    const change = toSideBySide(patch).find((row) => row.kind === 'change');
+    expect(change).toEqual({
+      kind: 'change',
+      oldNumber: 2,
+      newNumber: null,
+      removed: 'gone',
+      added: null,
+    });
+  });
+
+  it('numbers both sides independently, so the columns stay truthful', () => {
+    const before = ['1', '2', '3', '4', '5', '6', '7', '8'];
+    const after = ['1', '2', 'x', 'y', '5', '6', '7', '8'];
+    const rows = toSideBySide(diffLines(before, after).patch);
+
+    for (const row of rows) {
+      if (row.kind === 'context') {
+        expect(before[row.oldNumber - 1]).toBe(row.text);
+        expect(after[row.newNumber - 1]).toBe(row.text);
+      }
+      if (row.kind === 'change') {
+        if (row.removed !== null) expect(before[row.oldNumber! - 1]).toBe(row.removed);
+        if (row.added !== null) expect(after[row.newNumber! - 1]).toBe(row.added);
+      }
+    }
+  });
+
+  it('describes exactly the same change as the unified view', () => {
+    const before = ['a', 'b', 'c', 'd', 'e'];
+    const after = ['a', 'B', 'c', 'inserted', 'd'];
+    const diff = diffLines(before, after);
+    const rows = toSideBySide(diff.patch);
+
+    const added = rows.filter((row) => row.kind === 'change' && row.added !== null).length;
+    const removed = rows.filter((row) => row.kind === 'change' && row.removed !== null).length;
+    expect(added).toBe(diff.additions);
+    expect(removed).toBe(diff.deletions);
+  });
+
+  it('keeps a new file readable, with nothing on the left', () => {
+    const rows = toSideBySide(diffLines([], ['one', 'two']).patch);
+    const changes = rows.filter((row) => row.kind === 'change');
+    expect(changes).toHaveLength(2);
+    for (const row of changes) {
+      if (row.kind !== 'change') continue;
+      expect(row.removed).toBeNull();
+      expect(row.oldNumber).toBeNull();
+    }
+  });
+
+  it('handles several hunks', () => {
+    const before = Array.from({ length: 40 }, (_, i) => `line ${i}`);
+    const after = [...before];
+    after[2] = 'top';
+    after[36] = 'bottom';
+    const rows = toSideBySide(diffLines(before, after).patch);
+    expect(rows.filter((row) => row.kind === 'hunk')).toHaveLength(2);
   });
 });

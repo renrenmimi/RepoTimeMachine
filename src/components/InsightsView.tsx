@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Commit, RepoMeta } from '@/lib/domain/types';
 import type { DensifyState } from '@/lib/client/history-controller';
 import type { Milestone } from '@/lib/milestones/detect';
@@ -148,13 +148,12 @@ export function InsightsView(props: Props) {
           )}
         </section>
 
-        <section className={styles.block} aria-labelledby="insights-milestones">
-          <h2 className={styles.blockTitle} id="insights-milestones">
-            Milestones
-            <span className={styles.blockCount}>{formatNumber(milestones.length)}</span>
-          </h2>
-          <MilestoneList milestones={milestones} commits={commits} currentIndex={currentIndex} onInspect={onInspect} />
-        </section>
+        <MilestoneSection
+          milestones={milestones}
+          commits={commits}
+          currentIndex={currentIndex}
+          onInspect={onInspect}
+        />
 
         <section className={styles.block} aria-labelledby="insights-types">
           <h2 className={styles.blockTitle} id="insights-types">
@@ -274,7 +273,10 @@ function RepositoryFacts({ meta, totalCommits }: { meta: RepoMeta; totalCommits:
  * fire on one commit, so a flat list of fifteen entries would read as fifteen
  * moments in the project's life when it might be four.
  */
-function MilestoneList({
+/** Commits shown before the list has to be asked to open. */
+const MILESTONE_PREVIEW = 5;
+
+function MilestoneSection({
   milestones,
   commits,
   currentIndex,
@@ -285,6 +287,8 @@ function MilestoneList({
   currentIndex: number;
   onInspect: (index: number) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
+
   const groups = useMemo(() => {
     const byIndex = new Map<number, Milestone[]>();
     for (const milestone of milestones) {
@@ -295,16 +299,52 @@ function MilestoneList({
     return [...byIndex.entries()].sort((a, b) => a[0] - b[0]);
   }, [milestones]);
 
-  if (groups.length === 0) {
-    return (
-      <p className={styles.empty}>
-        No milestones detected yet. Rules that need commit diffs fire as those diffs load.
-      </p>
-    );
-  }
+  /*
+   * The earliest ones, because this page reads chronologically and the first
+   * few are where a repository's shape is decided. Expanding appends to the
+   * list rather than replacing it, so nothing already read moves.
+   */
+  const shown = showAll ? groups : groups.slice(0, MILESTONE_PREVIEW);
 
   return (
-    <>
+    <section className={styles.block} aria-labelledby="insights-milestones">
+      {/*
+       * The control lives in the heading, not after the list.
+       *
+       * Below the list it moved down the page as the list grew, and the browser
+       * scrolled to follow the button it had just focused — which threw the
+       * reader to the bottom of a section they were part-way through.
+       */}
+      <div className={styles.blockHead}>
+        <h2 className={styles.blockTitle} id="insights-milestones">
+          Milestones
+          <span className={styles.blockCount}>{formatNumber(milestones.length)}</span>
+        </h2>
+
+        {groups.length > MILESTONE_PREVIEW ? (
+          <button
+            type="button"
+            className={styles.milestoneMore}
+            aria-expanded={showAll}
+            onClick={() => setShowAll((value) => !value)}
+          >
+            {showAll ? `Show the first ${MILESTONE_PREVIEW} only` : 'Show all milestones'}
+            {showAll ? null : (
+              <span className={styles.milestoneMoreCount}>
+                {formatNumber(groups.length - MILESTONE_PREVIEW)} more commit
+                {groups.length - MILESTONE_PREVIEW === 1 ? '' : 's'}
+              </span>
+            )}
+          </button>
+        ) : null}
+      </div>
+
+      {groups.length === 0 ? (
+        <p className={styles.empty}>
+          No milestones detected yet. Rules that need commit diffs fire as those diffs load.
+        </p>
+      ) : (
+        <>
       <p className={styles.disclaimer}>
         These are pattern matches on file paths, commit metadata and tags. They describe what the data looks like, not
         what anyone intended, and each entry states the rule that fired.{' '}
@@ -314,7 +354,7 @@ function MilestoneList({
       </p>
 
       <ul className={styles.milestoneList}>
-        {groups.map(([index, items]) => {
+        {shown.map(([index, items]) => {
           const commit = commits[index];
           return (
             <li key={index} className={styles.milestoneRow} data-active={index === currentIndex || undefined}>
@@ -359,6 +399,8 @@ function MilestoneList({
           );
         })}
       </ul>
-    </>
+        </>
+      )}
+    </section>
   );
 }

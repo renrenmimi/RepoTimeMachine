@@ -389,11 +389,15 @@ export function TimeMachine() {
       ) : (
         <>
           <div className={styles.workspaceHead}>
+            {/*
+             * The name is the heading; where the data came from is metadata. On
+             * one line the two competed, and the disclosure made the heading
+             * look like a sentence rather than a title.
+             */}
             <div className={styles.titleRow}>
               <h1 className={styles.title} title={state.ref?.slug ?? undefined}>
                 {title}
               </h1>
-              <SourceStatus meta={state.meta} loading={busy} />
               {!isBuiltin && state.meta ? (
                 <div className={styles.usage}>
                   <GitHubUsage
@@ -404,6 +408,10 @@ export function TimeMachine() {
                   />
                 </div>
               ) : null}
+            </div>
+
+            <div className={styles.sourceRow}>
+              <SourceStatus meta={state.meta} loading={busy} />
             </div>
 
             <nav className={styles.viewTabs} role="tablist" aria-label="What to look at">

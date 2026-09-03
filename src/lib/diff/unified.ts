@@ -223,3 +223,75 @@ export function diffLines(before: readonly string[], after: readonly string[]): 
 export function diffText(before: string, after: string): UnifiedDiff {
   return diffLines(toLines(before), toLines(after));
 }
+
+/** One row of a two-column view of a hunk. */
+export type SideBySideRow =
+  | { kind: 'hunk'; text: string }
+  /** Unchanged on both sides. */
+  | { kind: 'context'; oldNumber: number; newNumber: number; text: string }
+  /** Removed on the left, added on the right, or one side of a replacement. */
+  | { kind: 'change'; oldNumber: number | null; newNumber: number | null; removed: string | null; added: string | null };
+
+/**
+ * A unified diff, arranged as two columns.
+ *
+ * Derived from the same hunks the unified view renders, so the two cannot
+ * disagree about what changed — only about how it is laid out. Consecutive
+ * removals and additions inside a hunk are paired up, which is what makes a
+ * replaced line readable side by side instead of as two separate rows.
+ */
+export function toSideBySide(patch: string): SideBySideRow[] {
+  const rows: SideBySideRow[] = [];
+  let oldNumber = 0;
+  let newNumber = 0;
+
+  /** Removals and additions waiting to be paired at the end of a run. */
+  let removed: { line: string; number: number }[] = [];
+  let added: { line: string; number: number }[] = [];
+
+  const flush = () => {
+    const pairs = Math.max(removed.length, added.length);
+    for (let i = 0; i < pairs; i += 1) {
+      const left = removed[i];
+      const right = added[i];
+      rows.push({
+        kind: 'change',
+        oldNumber: left?.number ?? null,
+        newNumber: right?.number ?? null,
+        removed: left?.line ?? null,
+        added: right?.line ?? null,
+      });
+    }
+    removed = [];
+    added = [];
+  };
+
+  for (const raw of patch.split('\n')) {
+    if (raw.startsWith('@@')) {
+      flush();
+      const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+      // A header that does not parse is still shown, rather than dropped.
+      oldNumber = match ? Number(match[1]) : oldNumber;
+      newNumber = match ? Number(match[2]) : newNumber;
+      rows.push({ kind: 'hunk', text: raw });
+      continue;
+    }
+
+    const body = raw.slice(1);
+    if (raw.startsWith('-')) {
+      removed.push({ line: body, number: oldNumber });
+      oldNumber += 1;
+    } else if (raw.startsWith('+')) {
+      added.push({ line: body, number: newNumber });
+      newNumber += 1;
+    } else {
+      flush();
+      rows.push({ kind: 'context', oldNumber, newNumber, text: body });
+      oldNumber += 1;
+      newNumber += 1;
+    }
+  }
+
+  flush();
+  return rows;
+}

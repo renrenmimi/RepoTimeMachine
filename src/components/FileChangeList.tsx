@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileChange } from '@/lib/domain/types';
 import { formatNumber, splitPath } from '@/lib/format';
+import { toSideBySide } from '@/lib/diff/unified';
 import { classifyPath, kindLabel } from '@/lib/tree/classify';
+import { useMediaQuery } from './hooks';
 import styles from './file-changes.module.css';
 
 /**
@@ -38,6 +40,8 @@ type Props = {
   onOpenPatch?: () => void;
 };
 
+export type DiffLayout = 'unified' | 'split';
+
 export function FileChangeList({
   files,
   truncated = false,
@@ -46,6 +50,14 @@ export function FileChangeList({
   focus = null,
   onOpenPatch,
 }: Props) {
+  /*
+   * Unified is the default and the only option on a narrow screen: two columns
+   * of code in 390px is one unreadable column twice. The choice is remembered
+   * for the session, because somebody who prefers one prefers it for all of them.
+   */
+  const wide = useMediaQuery('(min-width: 1280px)');
+  const [preferred, setPreferred] = useState<DiffLayout>('unified');
+  const layout: DiffLayout = wide ? preferred : 'unified';
   // Both bits of view state are keyed by `resetKey`, so moving to another commit
   // or comparison collapses them without an effect to reset anything.
   const [opened, setOpened] = useState<{ key: string; path: string } | null>(null);
@@ -103,9 +115,31 @@ export function FileChangeList({
         </p>
       ) : null}
 
+      {wide ? (
+        <div className={styles.layoutBar} role="group" aria-label="Diff layout">
+          {(['unified', 'split'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={styles.layoutOption}
+              aria-pressed={layout === option}
+              onClick={() => setPreferred(option)}
+            >
+              {option === 'unified' ? 'Unified' : 'Side by side'}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <ul className={styles.fileList} ref={listRef}>
         {shown.map((file) => (
-          <FileRow key={file.path} file={file} open={openPath === file.path} onToggle={toggle} />
+          <FileRow
+            key={file.path}
+            file={file}
+            open={openPath === file.path}
+            layout={layout}
+            onToggle={toggle}
+          />
         ))}
       </ul>
 
@@ -130,7 +164,17 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, '\\$&');
 }
 
-function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; onToggle: (path: string) => void }) {
+function FileRow({
+  file,
+  open,
+  layout,
+  onToggle,
+}: {
+  file: FileChange;
+  open: boolean;
+  layout: DiffLayout;
+  onToggle: (path: string) => void;
+}) {
   const { dir, name } = splitPath(file.path);
   const panelId = `patch-${file.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
   const kind = kindLabel(classifyPath(file.path).kind);
@@ -177,7 +221,9 @@ function FileRow({ file, open, onToggle }: { file: FileChange; open: boolean; on
       ) : null}
 
       <div id={panelId} hidden={!open}>
-        {open ? file.patch !== null ? <Patch file={file} /> : <PatchFallback file={file} /> : null}
+        {open ? (
+          file.patch !== null ? <Patch file={file} layout={layout} /> : <PatchFallback file={file} />
+        ) : null}
       </div>
     </li>
   );
@@ -221,30 +267,35 @@ export function statusWord(status: FileChange['status']): string {
  * Every line is a React text node, so patch content from an arbitrary public
  * repository can never become markup.
  */
-function Patch({ file }: { file: FileChange }) {
+function Patch({ file, layout }: { file: FileChange; layout: DiffLayout }) {
   const [full, setFull] = useState(false);
   const lines = useMemo(() => (file.patch ?? '').split('\n'), [file.patch]);
   const shown = lines.slice(0, MAX_PATCH_LINES);
   const tall = shown.length > PATCH_VIEWPORT_LINES;
+  const capped = useMemo(() => shown.join('\n'), [shown]);
 
   return (
     <div className={styles.patch}>
-      {/* Only this box scrolls sideways; the page never does. */}
-      <pre
-        className={styles.patchPre}
-        data-full={full || undefined}
-        tabIndex={0}
-        aria-label={`Diff for ${file.path}`}
-      >
-        <code>
-          {shown.map((line, index) => (
-            <span key={index} className={styles.patchLine} data-kind={lineKind(line)}>
-              {line === '' ? ' ' : line}
-              {'\n'}
-            </span>
-          ))}
-        </code>
-      </pre>
+      {layout === 'split' ? (
+        <SplitPatch patch={capped} path={file.path} full={full} />
+      ) : (
+        /* Only this box scrolls sideways; the page never does. */
+        <pre
+          className={styles.patchPre}
+          data-full={full || undefined}
+          tabIndex={0}
+          aria-label={`Diff for ${file.path}`}
+        >
+          <code>
+            {shown.map((line, index) => (
+              <span key={index} className={styles.patchLine} data-kind={lineKind(line)}>
+                {line === '' ? ' ' : line}
+                {'\n'}
+              </span>
+            ))}
+          </code>
+        </pre>
+      )}
 
       {tall ? (
         <button type="button" className={styles.patchToggle} onClick={() => setFull((value) => !value)}>
@@ -381,5 +432,79 @@ function ChevronIcon({ open }: { open: boolean }) {
     >
       <path d="M1.5 3 5 6.5 8.5 3z" />
     </svg>
+  );
+}
+
+/**
+ * The same hunks, in two columns.
+ *
+ * Rendered from `toSideBySide`, which pairs a replaced line onto one row so the
+ * before and after sit next to each other. Every cell is a text node, exactly
+ * as the unified view: patch content from an arbitrary repository can never
+ * become markup, whichever layout is showing it.
+ */
+function SplitPatch({ patch, path, full }: { patch: string; path: string; full: boolean }) {
+  const rows = useMemo(() => toSideBySide(patch), [patch]);
+
+  return (
+    <div
+      className={styles.split}
+      data-full={full || undefined}
+      tabIndex={0}
+      role="group"
+      aria-label={`Diff for ${path}, side by side`}
+    >
+      <table className={styles.splitTable}>
+        <caption className="visually-hidden">
+          {`Side-by-side diff for ${path}. The left column is the file before this change, the right column after it.`}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" colSpan={2}>
+              Before
+            </th>
+            <th scope="col" colSpan={2}>
+              After
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            if (row.kind === 'hunk') {
+              return (
+                <tr key={index} className={styles.splitHunk}>
+                  <td colSpan={4}>{row.text}</td>
+                </tr>
+              );
+            }
+
+            if (row.kind === 'context') {
+              return (
+                <tr key={index}>
+                  <td className={styles.splitNumber}>{row.oldNumber}</td>
+                  <td className={styles.splitCode}>{row.text === '' ? ' ' : row.text}</td>
+                  <td className={styles.splitNumber}>{row.newNumber}</td>
+                  <td className={styles.splitCode}>{row.text === '' ? ' ' : row.text}</td>
+                </tr>
+              );
+            }
+
+            return (
+              <tr key={index}>
+                <td className={styles.splitNumber}>{row.oldNumber ?? ''}</td>
+                <td className={styles.splitCode} data-kind={row.removed === null ? 'empty' : 'del'}>
+                  {/* The sign is kept, so the colour is never the only signal. */}
+                  {row.removed === null ? '' : `−${row.removed}`}
+                </td>
+                <td className={styles.splitNumber}>{row.newNumber ?? ''}</td>
+                <td className={styles.splitCode} data-kind={row.added === null ? 'empty' : 'add'}>
+                  {row.added === null ? '' : `+${row.added}`}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

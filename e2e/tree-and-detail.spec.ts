@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   commitSubject,
   currentIndex,
+  expectNoHorizontalOverflow,
   openRepo,
   REPOS,
   subTab,
@@ -183,6 +184,111 @@ test.describe('the repository and the changes together', () => {
     await expect(page.locator('[class*="plus"]').first()).toBeVisible();
   });
 
+  test('shows a real unified diff for the files a visitor opens first', async ({ page }) => {
+    /*
+     * The exact path somebody takes on arriving: step to commit 2, open the two
+     * files that were the most obvious dead ends before the fixture carried
+     * content.
+     */
+    await openRepo(page, REPOS.demo);
+    await transport(page).next.click();
+    await page.waitForTimeout(1200);
+    await subTab(page, 'Changes').click();
+
+    for (const path of ['next.config.ts', 'app/layout.tsx', 'styles/tokens.css']) {
+      const item = page.locator(`[class*="fileItem"][data-path="${path}"]`);
+      await item.locator('[class*="fileButton"]').click();
+
+      const diff = page.getByLabel(`Diff for ${path}`);
+      await expect(diff, path).toBeVisible();
+      await expect(diff).toContainText('@@');
+      // Real hunks, not a placeholder.
+      await expect(diff.locator('[data-kind="add"]').first()).toBeVisible();
+
+      // And the counts on the row are the counts in the diff.
+      const text = await diff.innerText();
+      const plus = text.split('\n').filter((line) => line.startsWith('+')).length;
+      await expect(item.locator('[class*="plus"]')).toHaveText(`+${plus}`);
+
+      await item.locator('[class*="fileButton"]').click();
+    }
+  });
+
+  test('no expandable row anywhere in the demo dead-ends', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+
+    for (const index of ['0', '4', '8', '12', '15']) {
+      await transport(page).slider.fill(index);
+      await page.waitForTimeout(400);
+      await subTab(page, 'Changes').click();
+
+      const items = page.locator('[class*="fileItem"]');
+      const count = await items.count();
+      expect(count).toBeGreaterThan(0);
+
+      for (let i = 0; i < count; i += 1) {
+        const item = items.nth(i);
+        const path = await item.getAttribute('data-path');
+        await item.locator('[class*="fileButton"]').click();
+
+        // Either a diff, or a specific explanation. Never an empty panel.
+        const hasDiff = await page.getByLabel(`Diff for ${path}`).count();
+        const hasReason = await item.locator('[class*="patchFallbackTitle"]').count();
+        expect(hasDiff + hasReason, `commit ${Number(index) + 1} ${path}`).toBeGreaterThan(0);
+
+        await item.locator('[class*="fileButton"]').click();
+      }
+    }
+  });
+
+  test('marks a generated file before it is opened, then says why', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await transport(page).next.click();
+    await page.waitForTimeout(1000);
+    await subTab(page, 'Changes').click();
+
+    const lockfile = page.locator('[class*="fileItem"][data-path="package-lock.json"]');
+    // Said in advance, so nothing looks readable and then turns out not to be.
+    await expect(lockfile.locator('[class*="fileKind"]')).toHaveText('generated');
+
+    await lockfile.locator('[class*="fileButton"]').click();
+    await expect(page.getByText('Generated file — diff deliberately not shown')).toBeVisible();
+    // And it does not pretend the count came from a diff.
+    await expect(page.getByText(/declared to be, not a count taken from a diff/)).toBeVisible();
+    // Not the generic failure it used to fall into.
+    await expect(page.getByText('No diff was provided')).toHaveCount(0);
+  });
+
+  test('offers side by side above 1280px, and never below it', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRepo(page, REPOS.demo);
+    await subTab(page, 'Changes').click();
+
+    const unified = page.getByRole('button', { name: 'Unified' });
+    const split = page.getByRole('button', { name: 'Side by side' });
+    await expect(unified).toHaveAttribute('aria-pressed', 'true');
+
+    const first = page.locator('[class*="fileItem"]').first();
+    const path = await first.getAttribute('data-path');
+    await first.locator('[class*="fileButton"]').click();
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+
+    await split.click();
+    await expect(split).toHaveAttribute('aria-pressed', 'true');
+    // Two columns, each labelled, describing the same change.
+    await expect(page.getByLabel(`Diff for ${path}, side by side`)).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Before' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'After' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    // A phone gets one column, and is not offered the choice at all.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    await expect(page.getByRole('button', { name: 'Side by side' })).toHaveCount(0);
+    await expect(page.getByLabel(`Diff for ${path}`)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test('opens a readable patch on demand', async ({ page }) => {
     await openRepo(page, REPOS.demo);
     await page.waitForTimeout(1500);
@@ -313,6 +419,43 @@ test.describe('insights', () => {
     // Fifteen rules across nine commits, said as such.
     await expect(page.getByText(/\d+ milestones across \d+ commits/)).toBeVisible();
     await expect(page.getByText(/several rules often match the same commit/)).toBeVisible();
+  });
+
+  test('opens the milestone list at five commits, with the rest on request', async ({ page }) => {
+    await openRepo(page, REPOS.demo);
+    await viewTab(page, 'Insights').click();
+    await page.waitForTimeout(1200);
+
+    // Five to begin with, so Growth and the scope are still on the first screen.
+    await expect(page.locator('[class*="milestoneRow"]')).toHaveCount(5);
+
+    const more = page.getByRole('button', { name: /Show all milestones/ });
+    await expect(more).toBeVisible();
+
+    // Bring the section into view *before* measuring, so what is measured is the
+    // effect of expanding and not the scroll Playwright would do to reach it.
+    await more.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+
+    // Expanding appends, and nothing already on screen moves — including the
+    // control itself, which is why it lives in the heading rather than below
+    // the list it grows.
+    const firstBefore = await page.locator('[class*="milestoneCommit"]').first().innerText();
+    const rowBox = await page.locator('[class*="milestoneRow"]').first().boundingBox();
+    const buttonBox = await more.boundingBox();
+    await more.click();
+
+    expect(await page.locator('[class*="milestoneRow"]').count()).toBeGreaterThan(5);
+    expect(await page.locator('[class*="milestoneCommit"]').first().innerText()).toBe(firstBefore);
+    const rowAfter = await page.locator('[class*="milestoneRow"]').first().boundingBox();
+    expect(rowAfter!.y, 'the first row moved').toBeCloseTo(rowBox!.y, 0);
+
+    const collapse = page.getByRole('button', { name: /Show the first 5 only/ });
+    await expect(collapse).toBeVisible();
+    expect((await collapse.boundingBox())!.y, 'the control moved').toBeCloseTo(buttonBox!.y, 0);
+
+    // Every entry still states the rule that produced it.
+    await expect(page.getByText(/^Rule: /).first()).toBeVisible();
   });
 
   test('jumps from a milestone back to its commit in the replay', async ({ page }) => {

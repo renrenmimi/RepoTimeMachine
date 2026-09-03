@@ -39,12 +39,18 @@
   flex-shrink: 0;
 }
 
+/*
+ * One slot, two messages. Reserving its height means an invalid entry replaces
+ * the hint in place instead of pushing everything below it down the page.
+ */
 .hint {
   composes: helpText from './controls.module.css';
+  min-height: 40px;
 }
 
 .error {
   composes: errorText from './controls.module.css';
+  min-height: 40px;
 }
 
 .mono {

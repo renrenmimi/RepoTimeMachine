@@ -139,6 +139,11 @@ export function Transport({
           Latest
         </button>
 
+        {/*
+         * Speed sits with the controls rather than at the far edge. Pinned right
+         * it left a hole across the middle of the row that read as a break in
+         * the layout rather than as one region.
+         */}
         <div className={styles.speed} role="group" aria-label="Playback speed">
           <span className={styles.speedLabel} aria-hidden="true">
             Speed

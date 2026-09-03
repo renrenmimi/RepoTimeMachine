@@ -12,12 +12,13 @@ import styles from './history-column.module.css';
 /**
  * Fixed row height, matched exactly by the stylesheet.
  *
- * 12px of padding, a 20px subject line and an 18px meta line. The subject is
- * one line and truncates: letting it wrap would make rows different heights and
- * every virtualisation offset a guess. The full text is in the header and in
- * the row's tooltip.
+ * A two-line subject box (2 × 20px, clamped) plus an 18px meta line, centred in
+ * 80px. Fixed rather than intrinsic: a row that grows with its
+ * content makes every virtualisation offset a guess, and a subject clipped after
+ * six words makes the list unreadable. Two lines carries almost every real
+ * subject; the rest is in the heading, the tooltip and the accessible name.
  */
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 80;
 
 type Props = {
   commits: Commit[];
@@ -177,20 +178,30 @@ export function HistoryColumn({
                   data-active={commit.index === currentIndex || undefined}
                   aria-current={commit.index === currentIndex ? 'true' : undefined}
                   title={commit.subject}
+                  aria-label={`Commit ${commit.index + 1}: ${commit.subject}`}
                   onClick={() => onSeek(commit.index)}
                 >
                   <span className={styles.itemSubject}>{commit.subject}</span>
+                  {/*
+                   * A fixed four-column grid: number, date, sha, marker. Laid
+                   * out rather than flowed, so the columns line up down the
+                   * list however long a date or a tag name happens to be.
+                   */}
                   <span className={styles.itemMeta}>
                     <span className={`${styles.itemIndex} tabular`}>{commit.index + 1}</span>
                     <span className={styles.itemDate}>{formatDate(commit.author.date)}</span>
                     <span className={`${styles.itemSha} tabular`}>{commit.shortSha}</span>
-                    {tagsByIndex.has(commit.index) ? (
-                      <span className={styles.itemTag}>{tagsByIndex.get(commit.index)}</span>
-                    ) : milestoneIndices.has(commit.index) ? (
-                      <span className={styles.itemFlag} aria-label="matched a milestone rule">
-                        ◆
-                      </span>
-                    ) : null}
+                    <span className={styles.itemMark}>
+                      {tagsByIndex.has(commit.index) ? (
+                        <span className={styles.itemTag} title={`Tagged ${tagsByIndex.get(commit.index)}`}>
+                          {tagsByIndex.get(commit.index)}
+                        </span>
+                      ) : milestoneIndices.has(commit.index) ? (
+                        <span className={styles.itemFlag} title="Matched a milestone rule" aria-hidden="true">
+                          ◆
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                 </button>
               </li>

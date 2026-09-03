@@ -28,12 +28,19 @@
   color: var(--text-secondary);
 }
 
+/*
+ * Two entries of equal width. The demo is still the easier path — it is the only
+ * filled button on the screen and it needs no input — but sizing it as the
+ * smaller of the two made it look like the lesser option rather than the
+ * quicker one.
+ */
 .entries {
   margin-top: var(--space-5);
   display: grid;
-  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
-  gap: var(--space-5);
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+  max-width: 62rem;
 }
 
 .demoEntry,
@@ -43,6 +50,17 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5);
+}
+
+/* The primary path reads as the surface you are meant to use. */
+.demoEntry {
+  background: var(--bg-subtle);
+}
+
+/* Pins the closing note to the bottom, so both cards end on the same line. */
+.demoDisclosure,
+.entryNote {
+  margin-top: auto;
 }
 
 .entryTitle {

@@ -44,7 +44,7 @@ test.describe('the home screen', () => {
     await page.goto('/');
 
     await expect(page.getByText('16 synthetic commits · 0 GitHub requests')).toBeVisible();
-    await expect(page.getByText(/Synthetic data written for this application/)).toBeVisible();
+    await expect(page.getByText(/Invented data, written for this application/)).toBeVisible();
     await expect(page.getByText(/not anybody’s repository/)).toBeVisible();
 
     // One H1 on the page, and the two entries are sections under it.
@@ -245,8 +245,12 @@ test.describe('the shell', () => {
     const top = await page
       .locator('[class*="viewTabs"]')
       .evaluate((element) => element.getBoundingClientRect().bottom);
-    // The bar, the title row and the view tabs. The rest belongs to the repository.
-    expect(top).toBeLessThanOrEqual(160);
+    /*
+     * The bar, the repository's name, a quiet row of source metadata, and the
+     * view tabs. The source line has a row of its own — crammed onto the
+     * heading it made the title read as a sentence — which costs about 20px.
+     */
+    expect(top).toBeLessThanOrEqual(184);
   });
 
   test('shows the player and the repository together at 1280x720', async ({ page }) => {
@@ -349,7 +353,7 @@ test.describe('theme', () => {
     const background = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--bg-page').trim(),
     );
-    expect(background.toLowerCase()).toBe('#f6f7f5');
+    expect(background.toLowerCase()).toBe('#f7f8f5');
   });
 
   test('follows the system when asked to, with no attribute of its own', async ({ page }) => {
@@ -363,7 +367,7 @@ test.describe('theme', () => {
     const background = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--bg-page').trim(),
     );
-    expect(background.toLowerCase()).toBe('#111714');
+    expect(background.toLowerCase()).toBe('#101411');
   });
 
   test('remembers an explicit choice across a reload, with no flash', async ({ page }) => {
@@ -411,9 +415,9 @@ test.describe('theme', () => {
     });
     // A hand-built dark palette: the surface is lighter than the page, which a
     // straight inversion of the light theme would get backwards.
-    expect(tokens.page.toLowerCase()).toBe('#111714');
-    expect(tokens.surface.toLowerCase()).toBe('#19211d');
-    expect(tokens.text.toLowerCase()).toBe('#e8eee9');
+    expect(tokens.page.toLowerCase()).toBe('#101411');
+    expect(tokens.surface.toLowerCase()).toBe('#171d19');
+    expect(tokens.text.toLowerCase()).toBe('#f1f5f2');
   });
 });
 

@@ -50,10 +50,9 @@ export function Landing({ onOpenDemo, onSelect, onOpenHelp, busy }: LandingProps
             <p className={styles.demoCost}>
               {BUILTIN_DEMO.commitCount} synthetic commits &middot; 0 GitHub requests
             </p>
-            {/* Said plainly, on the first screen: this history is invented. */}
+            {/* One accurate sentence. The cost is on the line above it. */}
             <p className={styles.demoDisclosure}>
-              Synthetic data written for this application — not anybody&rsquo;s repository, and it makes no request to
-              GitHub.
+              Invented data, written for this application — not anybody&rsquo;s repository.
             </p>
           </section>
 
