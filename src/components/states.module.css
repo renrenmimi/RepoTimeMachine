@@ -76,6 +76,13 @@
   align-self: flex-start;
 }
 
+.demoLede {
+  font-size: var(--text-base);
+  line-height: 24px;
+  color: var(--text-secondary);
+  max-width: 46ch;
+}
+
 .demoCost {
   font-size: var(--text-sm);
   line-height: 20px;

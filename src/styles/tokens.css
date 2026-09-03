@@ -17,7 +17,12 @@
   --bg-page: #f7f8f5;
   --bg-surface: #ffffff;
   --bg-subtle: #eef3ee;
-  --bg-hover: #e6ece6;
+  /*
+   * Hover is deliberately fainter, and less green, than selection: a list where
+   * the pointer tints a row as strongly as the current row does reads as two
+   * current rows.
+   */
+  --bg-hover: #f1f3f0;
   --bg-selected: #e5f1e9;
 
   /* ---- text ------------------------------------------------------------- */
@@ -98,7 +103,7 @@
   --bg-page: #101411;
   --bg-surface: #171d19;
   --bg-subtle: #1d2520;
-  --bg-hover: #26302a;
+  --bg-hover: #1f2621;
   --bg-selected: #203b2c;
 
   --text-primary: #f1f5f2;
@@ -168,7 +173,7 @@
     --bg-page: #101411;
     --bg-surface: #171d19;
     --bg-subtle: #1d2520;
-    --bg-hover: #26302a;
+    --bg-hover: #1f2621;
     --bg-selected: #203b2c;
 
     --text-primary: #f1f5f2;

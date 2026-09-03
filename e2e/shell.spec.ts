@@ -475,10 +475,14 @@ test.describe('states', () => {
     expect(github).toEqual([]);
   });
 
-  test('explains an empty repository', async ({ page }) => {
+  test('explains an empty repository, and still offers a history to look at', async ({ page }) => {
     await page.goto(repoUrl(REPOS.empty));
     await expect(page.getByRole('heading', { name: /Nothing to play back yet/ })).toBeVisible();
     await expect(page.getByRole('slider', { name: /Commit position/ })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Explore the built-in demo' }).click();
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
+    await expect(builtinBadge(page)).toContainText('Built-in demo');
   });
 
   test('handles a repository with exactly one commit', async ({ page }) => {

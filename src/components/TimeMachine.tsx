@@ -481,7 +481,11 @@ export function TimeMachine() {
             ) : null}
 
             {state.status === 'ready' && state.commits.length === 0 ? (
-              <EmptyRepoState slug={state.ref?.slug ?? ''} onClear={() => setOverlay('repo')} />
+              <EmptyRepoState
+                slug={state.ref?.slug ?? ''}
+                onClear={() => setOverlay('repo')}
+                onOpenDemo={openBuiltinDemo}
+              />
             ) : null}
 
             {ready && view === 'replay' ? (

@@ -9,9 +9,11 @@
 /*
  * A readable measure, not a full-bleed dashboard: charts need room, but a chart
  * two metres wide is harder to relate to the paragraph under it, not easier.
+ * Matched to the width Compare gives its selector row so the two pages agree
+ * about where the content column ends.
  */
 .inner {
-  max-width: 960px;
+  max-width: 1080px;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
