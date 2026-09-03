@@ -119,8 +119,27 @@ svg {
   background-clip: content-box;
 }
 
+/*
+ * Text for assistive technology only.
+ *
+ * `top` and `left` are not decoration here. Without them the box sits at its
+ * static position, and the usual `sr-only` recipe leaves it there — which is
+ * fine on a page that scrolls, and a bug in a fixed-height application shell.
+ * These labels are emitted per row inside virtualised lists, so a row a
+ * thousand pixels down the list put its 1px box a thousand pixels down the
+ * *page*: absolutely positioned boxes are only clipped by an ancestor's
+ * `overflow` when that ancestor is itself positioned, and a static shell is
+ * not. The result was a whole second screen of blank page below the app,
+ * growing as playback filled the tree.
+ *
+ * Pinned to the containing block's origin, the box can never be below the fold,
+ * whatever the flow around it does. Nothing here is focusable or visible, so
+ * where the box sits has no other consequence.
+ */
 .visually-hidden {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   padding: 0;

@@ -8,6 +8,13 @@
  */
 
 .shell {
+  /*
+   * A containing block, so that `overflow: hidden` below actually clips.
+   * An absolutely positioned descendant is only clipped by an ancestor's
+   * overflow when that ancestor is positioned; a static one lets it escape to
+   * the initial containing block and extend the page.
+   */
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;

@@ -240,6 +240,25 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   );
 }
 
+/**
+ * On a desktop-sized window the frame is pinned and only a view scrolls, so the
+ * document itself must be exactly the height of the viewport.
+ *
+ * Worth asserting rather than assuming: an absolutely positioned descendant is
+ * only clipped by an ancestor's `overflow` when that ancestor is positioned, so
+ * one static wrapper is enough to let a 1px screen-reader label extend the page
+ * by however far down a list it happens to sit.
+ */
+export async function expectNoPageScroll(page: Page, where: string): Promise<void> {
+  const box = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(box.scrollHeight, `the document must not scroll vertically (${where})`).toBeLessThanOrEqual(
+    box.clientHeight + 1,
+  );
+}
+
 /** Counts requests that left for GitHub, which for the demo must always be none. */
 export function watchGitHub(page: Page): string[] {
   const calls: string[] = [];
