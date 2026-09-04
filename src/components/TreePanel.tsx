@@ -126,9 +126,11 @@ export function TreePanel({
 
   return (
     <section className={`${styles.panel} ${className ?? ''}`} aria-label="Repository files at this commit">
-      {/* How this list was produced, first — not buried under the list it describes. */}
-      <FidelityLine projection={projection} commits={commits} onSeek={onSeek} />
-
+      {/*
+       * One row: what you can do to this list, and how the list was produced.
+       * These were two stacked bands, which on a short window cost 100px of the
+       * reading area to say two things that fit comfortably side by side.
+       */}
       <div className={styles.tools}>
         <input
           id="tree-filter"
@@ -142,6 +144,7 @@ export function TreePanel({
         <span className={`${styles.count} tabular`}>
           {formatNumber(totalFiles)} file{totalFiles === 1 ? '' : 's'}
         </span>
+        <FidelityLine projection={projection} commits={commits} onSeek={onSeek} />
       </div>
 
       <div className={styles.body} ref={bodyRef}>

@@ -234,7 +234,7 @@ export function Transport({
   );
 }
 
-function PlayIcon() {
+export function PlayIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <path d="M3 1.5 12 7l-9 5.5z" />
@@ -242,7 +242,7 @@ function PlayIcon() {
   );
 }
 
-function PauseIcon() {
+export function PauseIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <rect x="3" y="2" width="3" height="10" rx="0.5" />
@@ -251,7 +251,7 @@ function PauseIcon() {
   );
 }
 
-function PrevIcon() {
+export function PrevIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <path d="M11 2 4.5 7 11 12z" />
@@ -260,7 +260,7 @@ function PrevIcon() {
   );
 }
 
-function NextIcon() {
+export function NextIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
       <path d="M3 2 9.5 7 3 12z" />

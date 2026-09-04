@@ -65,12 +65,25 @@
  * Author, sha and elapsed time. Metadata: 13px, secondary, and the sha in
  * monospace at 12px so it reads as an identifier rather than as prose.
  */
+/*
+ * The commit's metadata, on one wrapping line: who and when on the left, the
+ * change totals after them. Two stacked bands said no more and cost a row of
+ * the reading area on every window.
+ */
+.metaRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+
 .meta {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-2);
   font-size: var(--text-sm);
   line-height: 20px;
   color: var(--text-secondary);
@@ -138,7 +151,6 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
   font-size: var(--text-md);
   font-weight: 500;
   line-height: 22px;
@@ -279,12 +291,89 @@
   padding: var(--space-4) 0 var(--space-3);
 }
 
+/* --------------------------------------------------- expanded reading strip */
+
+/*
+ * What is left of the heading and the player when the panel takes the stage:
+ * one 40px line carrying where you are, what this commit is, and the controls
+ * for moving. Anything more would defeat the point of expanding.
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  min-width: 0;
+  height: 44px;
+  padding-top: var(--space-2);
+}
+
+.stripPosition {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+/* One line, ellipsised: the full subject is in the heading you just collapsed,
+   and in this element's `title`. */
+.stripSubject {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stripStep {
+  composes: iconButton from './controls.module.css';
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+}
+
 /* ----------------------------------------------------------------- sub-views */
+
+/* The tabs, and the one control that changes how much room they get. */
+.subTabsRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
 
 .subTabs {
   composes: subTabList from './controls.module.css';
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
+/*
+ * Quiet by default and clearly pressed when on, because it changes the shape of
+ * the view rather than the data in it.
+ */
+.expandToggle {
+  composes: buttonQuiet from './controls.module.css';
+  align-self: center;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+  height: 30px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.expandToggle[aria-pressed='true'] {
+  background: var(--bg-selected);
+  color: var(--text-accent);
 }
 
 .subTab {
@@ -326,6 +415,84 @@
   font-weight: 400;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------- responsive: height */
+
+/*
+ * The chrome above the reading area used to cost a fixed ~628px whatever the
+ * window was, so a 1280x720 laptop was left about 90px of file tree — two rows.
+ * The heading, the player and the paddings now step down as the window gets
+ * shorter, which is the difference between a demo that reads and one that
+ * technically renders.
+ *
+ * Written as `max-height` steps rather than a single clamp because what should
+ * give way is not proportional: gaps first, then type size, then the parts of
+ * the metadata that repeat what is already on screen. The first step starts at
+ * 1000px, so every laptop gets it and only a tall monitor keeps the roomy
+ * version.
+ */
+@media (min-width: 900px) and (max-height: 1000px) {
+  .commitHead {
+    padding-top: var(--space-3);
+  }
+
+  .subject {
+    font-size: var(--text-xl);
+    line-height: 28px;
+  }
+
+  .metaRow {
+    margin-top: var(--space-1);
+  }
+
+  .milestones {
+    margin-top: var(--space-1);
+  }
+
+  .transportSlot {
+    padding: var(--space-3) 0 var(--space-2);
+  }
+}
+
+@media (min-width: 900px) and (max-height: 860px) {
+  .commitHead {
+    padding-top: var(--space-2);
+  }
+
+  .subject {
+    font-size: var(--text-lg);
+    line-height: 26px;
+  }
+
+  .summary {
+    font-size: var(--text-sm);
+    line-height: 20px;
+  }
+
+  .transportSlot {
+    padding: var(--space-2) 0 var(--space-2);
+  }
+
+  .strip {
+    height: 38px;
+    padding-top: var(--space-1);
+  }
+}
+
+/*
+ * The tightest step. The date is dropped from the position line — it is still on
+ * the commit's own metadata row, two lines below — and the milestone line, which
+ * is a summary of detail available on request, gives up its own row.
+ */
+@media (min-width: 900px) and (max-height: 780px) {
+  .positionDate {
+    display: none;
+  }
+
+  .milestones {
+    margin-top: 0;
+  }
 }
 
 /* ---------------------------------------------------------------- responsive */

@@ -259,6 +259,25 @@ export async function expectNoPageScroll(page: Page, where: string): Promise<voi
   );
 }
 
+/** The control that gives the reading area the whole stage. */
+export function expandToggle(page: Page) {
+  return page.getByRole('button', { name: /^(Expand|Collapse)$/ });
+}
+
+/**
+ * How much of the window the file tree actually gets, as a fraction.
+ *
+ * The number the interface is really judged on: everything above it is chrome,
+ * and chrome is not what anybody opened the application to read.
+ */
+export async function readingShare(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const body = document.querySelector('[class*="tree-panel"][class*="__body"]');
+    if (!body) return 0;
+    return body.getBoundingClientRect().height / document.documentElement.clientHeight;
+  });
+}
+
 /** Counts requests that left for GitHub, which for the demo must always be none. */
 export function watchGitHub(page: Page): string[] {
   const calls: string[] = [];
