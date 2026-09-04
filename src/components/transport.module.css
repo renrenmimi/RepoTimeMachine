@@ -225,6 +225,17 @@
   color: var(--text-muted);
 }
 
+/*
+ * On a short window the track's own date labels go. The range is still on the
+ * commit's line above and in the scrubber's `aria-valuetext`, so nothing is
+ * only here — and the reading area gets the 16px.
+ */
+@media (min-width: 900px) and (max-height: 780px) {
+  .scale {
+    display: none;
+  }
+}
+
 .rangeLabel {
   flex: 1;
   min-width: 0;

@@ -4,6 +4,7 @@ import {
   builtinBadge,
   commitSubject,
   currentIndex,
+  expandToggle,
   openCompare,
   openRepo,
   REPOS,
@@ -279,6 +280,24 @@ test.describe('keyboard control', () => {
     expect(await currentIndex(page)).toBe(0);
     await page.keyboard.press('End');
     expect(await currentIndex(page)).toBe(15);
+  });
+
+  test('F gives the reading area the stage, and stands down in a text field', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openRepo(page, REPOS.demo);
+    await focusDocument(page);
+
+    await page.keyboard.press('f');
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('f');
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'false');
+
+    // Typing an f into the path filter must type an f.
+    const filter = page.getByLabel('Filter file paths in the tree');
+    await filter.click();
+    await filter.press('f');
+    await expect(filter).toHaveValue('f');
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('brackets change the speed', async ({ page }) => {

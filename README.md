@@ -54,6 +54,26 @@ Diffs read as a unified patch by default, with an optional two-column view on a
 wide desktop. Narrow screens are always unified — two columns of code at 390px is
 worse than one.
 
+**The reading area gets the room.** Everything above it — the repository name, the
+commit's heading, the player — is chrome, and chrome is not what anybody opened
+the application to read. Two things keep it in proportion:
+
+- the chrome **steps down as the window gets shorter**, in three stages: the gaps
+  first, then the type size, then the metadata that repeats something already on
+  screen;
+- `Expand` (or `f`) hands the panel the whole stage, leaving one line that says
+  where you are, what this commit is, and the three controls for moving.
+
+| Window | File tree, before | Collapsed | Expanded |
+| --- | --- | --- | --- |
+| 1440×900 | 272px (30%) | 400px (44%) | 594px (66%) |
+| 1366×768 | 217px (28%) | 307px (40%) | 477px (62%) |
+| 1280×720 | **92px (13%)** | 259px (36%) | 429px (60%) |
+
+92px is two rows. A 1280×720 laptop could not show a single line of a diff,
+because the chrome cost a fixed ~628px whatever the window was. Three end-to-end
+tests now hold a floor under that share, and they fail on the old layout.
+
 Arriving on a repository puts the playhead on the **earliest commit in the loaded
 range**, paused. Stepping forward from the start is the point of the tool;
 arriving at the finished repository shows a result instead. A link that names a
@@ -607,8 +627,9 @@ from its position in the current ranking.
   support, touch dragging and assistive-technology semantics. Its `aria-valuetext`
   reads out the commit number, date and subject.
 - Keyboard controls: `Space`/`k` play-pause, `←`/`→` step, `Shift+←`/`Shift+→`
-  jump ten, `Home`/`End` ends of range, `[`/`]` speed, `/` focus the path filter.
-  Shortcuts stand down while a text field has focus.
+  jump ten, `Home`/`End` ends of range, `[`/`]` speed, `f` give the reading area
+  the whole height, `/` focus the path filter. Shortcuts stand down while a text
+  field has focus.
 - Focus is never trapped. A skip link is the first thing in the tab order.
 - `prefers-reduced-motion: reduce` replaces transitions with immediate state
   changes — every duration token collapses to 1ms and looping animations are

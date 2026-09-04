@@ -42,12 +42,23 @@ function projection(
  * `ReplayView` in the real application — it unmounts on a view change — so the
  * harness has to hold them too for the interactions to behave as they do there.
  */
-type ShellHeld = 'subView' | 'onSubView' | 'diffFocus' | 'onDiffFocus' | 'openedDiff' | 'onOpenedDiff' | 'treeView' | 'onTreeView';
+type ShellHeld =
+  | 'subView'
+  | 'onSubView'
+  | 'diffFocus'
+  | 'onDiffFocus'
+  | 'openedDiff'
+  | 'onOpenedDiff'
+  | 'expanded'
+  | 'onExpanded'
+  | 'treeView'
+  | 'onTreeView';
 
 function Harness(props: Omit<Parameters<typeof ReplayView>[0], ShellHeld>) {
   const [subView, setSubView] = useState<SubView>('repository');
   const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
   const [openedDiff, setOpenedDiff] = useState<OpenedDiff | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
 
   return (
@@ -59,6 +70,8 @@ function Harness(props: Omit<Parameters<typeof ReplayView>[0], ShellHeld>) {
       onDiffFocus={setDiffFocus}
       openedDiff={openedDiff}
       onOpenedDiff={setOpenedDiff}
+      expanded={expanded}
+      onExpanded={setExpanded}
       treeView={treeView}
       onTreeView={setTreeView}
     />

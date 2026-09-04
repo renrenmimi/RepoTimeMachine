@@ -10,7 +10,7 @@ import { ChangesPanel } from './ChangesPanel';
 import type { OpenedDiff } from './FileChangeList';
 import { HistoryColumn } from './HistoryColumn';
 import { Overlay } from './Overlay';
-import { Transport } from './Transport';
+import { NextIcon, PauseIcon, PlayIcon, PrevIcon, Transport } from './Transport';
 import { TreePanel, type TreeViewState } from './TreePanel';
 import { useMediaQuery } from './hooks';
 import styles from './replay.module.css';
@@ -57,6 +57,15 @@ type Props = {
   onDiffFocus: (next: { path: string } | null) => void;
   openedDiff: OpenedDiff | null;
   onOpenedDiff: (next: OpenedDiff | null) => void;
+  /*
+   * True when the reading area has been given the whole stage.
+   *
+   * The chrome above it costs a fixed amount of height, so on a 720px-tall
+   * window the file tree and the diff were left about 90px — two rows. This is
+   * the way out for somebody who came to read the code, not the metadata.
+   */
+  expanded: boolean;
+  onExpanded: (next: boolean) => void;
   treeView: TreeViewState;
   onTreeView: (next: TreeViewState) => void;
 };
@@ -100,6 +109,8 @@ export function ReplayView(props: Props) {
     onDiffFocus,
     openedDiff,
     onOpenedDiff,
+    expanded,
+    onExpanded,
     treeView,
     onTreeView,
   } = props;
@@ -173,27 +184,77 @@ export function ReplayView(props: Props) {
       )}
 
       <div className={styles.main}>
-        <header className={styles.commitHead}>
-          <p className={styles.position} id="replay-position">
+        {/*
+         * Expanded: one line in place of the heading and the player, so the
+         * reading area gets the ~300px they were spending. Enough is kept to
+         * stay oriented and to keep moving — where you are, what this commit is,
+         * and the three controls that get used most.
+         */}
+        {expanded ? (
+          <div className={styles.strip}>
+            <span className={`${styles.stripPosition} tabular`} id="replay-position">
+              {commits.length === 0
+                ? 'No commits loaded'
+                : `Commit ${formatNumber(playback.index + 1)} of ${formatNumber(commits.length)}`}
+            </span>
+            <h2 className={styles.stripSubject} id="selected-commit-subject" title={currentCommit?.subject}>
+              {currentCommit ? currentCommit.subject : 'No commit selected'}
+            </h2>
+            <button
+              type="button"
+              className={styles.stripStep}
+              onClick={props.onPrevious}
+              disabled={playback.index <= 0}
+              aria-label="Previous commit"
+            >
+              <PrevIcon />
+            </button>
+            <button
+              type="button"
+              className={styles.stripStep}
+              onClick={props.onPlayPause}
+              aria-label={playback.playing ? 'Pause playback' : 'Play history'}
+            >
+              {playback.playing ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            <button
+              type="button"
+              className={styles.stripStep}
+              onClick={props.onNext}
+              disabled={playback.index >= commits.length - 1}
+              aria-label="Next commit"
+            >
+              <NextIcon />
+            </button>
+          </div>
+        ) : null}
+
+        <header className={styles.commitHead} hidden={expanded}>
+          <p className={styles.position} id={expanded ? undefined : 'replay-position'}>
             <span className="tabular">
               {commits.length === 0
                 ? 'No commits loaded'
                 : `Commit ${formatNumber(playback.index + 1)} of ${formatNumber(commits.length)}`}
             </span>
             {currentCommit ? (
-              <>
+              <span className={styles.positionDate}>
                 <span className={styles.dot} aria-hidden="true">
                   ·
-                </span>
+                </span>{' '}
                 <time dateTime={currentCommit.author.date}>{formatDateTime(currentCommit.author.date)}</time>
-              </>
+              </span>
             ) : null}
           </p>
 
-          <h2 className={styles.subject} id="selected-commit-subject">
+          <h2 className={styles.subject} id={expanded ? undefined : 'selected-commit-subject'}>
             {currentCommit ? currentCommit.subject : 'No commit selected'}
           </h2>
 
+          {/*
+           * Author, sha, elapsed time and the change totals are all metadata
+           * about the same commit, so they share one wrapping line instead of
+           * two stacked bands. On a narrow column they wrap and read as before.
+           */}
           {currentCommit ? (
             <CommitMeta
               commit={currentCommit}
@@ -209,7 +270,7 @@ export function ReplayView(props: Props) {
           ) : null}
         </header>
 
-        <div className={styles.transportSlot}>
+        <div className={styles.transportSlot} hidden={expanded}>
           <Transport
             playback={playback}
             commits={commits}
@@ -225,34 +286,52 @@ export function ReplayView(props: Props) {
           />
         </div>
 
-        <div className={styles.subTabs} role="tablist" aria-label="What to show for this commit">
+        {/*
+         * The toggle sits beside the tabs rather than inside them: a `tablist`
+         * may only contain tabs, and an ordinary button in there would misreport
+         * itself to anything reading the roles.
+         */}
+        <div className={styles.subTabsRow}>
+          <div className={styles.subTabs} role="tablist" aria-label="What to show for this commit">
+            <button
+              type="button"
+              role="tab"
+              id="subtab-repository"
+              className={styles.subTab}
+              aria-selected={subView === 'repository'}
+              aria-controls="subpanel-repository"
+              tabIndex={subView === 'repository' ? 0 : -1}
+              onClick={() => onSubView('repository')}
+            >
+              Repository
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="subtab-changes"
+              className={styles.subTab}
+              aria-selected={subView === 'changes'}
+              aria-controls="subpanel-changes"
+              tabIndex={subView === 'changes' ? 0 : -1}
+              onClick={() => {
+                onSubView('changes');
+                onDiffFocus(null);
+              }}
+            >
+              Changes
+              <span className={styles.subTabCount}>({formatNumber(changedCount)})</span>
+            </button>
+          </div>
+
           <button
             type="button"
-            role="tab"
-            id="subtab-repository"
-            className={styles.subTab}
-            aria-selected={subView === 'repository'}
-            aria-controls="subpanel-repository"
-            tabIndex={subView === 'repository' ? 0 : -1}
-            onClick={() => onSubView('repository')}
+            className={styles.expandToggle}
+            aria-pressed={expanded}
+            onClick={() => onExpanded(!expanded)}
+            title={expanded ? 'Show the commit heading and the player again (F)' : 'Give this panel the whole height (F)'}
           >
-            Repository
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="subtab-changes"
-            className={styles.subTab}
-            aria-selected={subView === 'changes'}
-            aria-controls="subpanel-changes"
-            tabIndex={subView === 'changes' ? 0 : -1}
-            onClick={() => {
-              onSubView('changes');
-              onDiffFocus(null);
-            }}
-          >
-            Changes
-            <span className={styles.subTabCount}>({formatNumber(changedCount)})</span>
+            <ExpandIcon expanded={expanded} />
+            {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
 
@@ -294,6 +373,26 @@ export function ReplayView(props: Props) {
   );
 }
 
+/** Two arrows out, or two arrows in: the same glyph read both ways. */
+function ExpandIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      {expanded ? (
+        <>
+          <path d="M2 2l3.2 3.2M5.4 2.2v3h-3" />
+          <path d="M12 12L8.8 8.8M8.6 11.8v-3h3" />
+        </>
+      ) : (
+        <>
+          <path d="M5.2 2h-3v3" />
+          <path d="M8.8 12h3v-3" />
+          <path d="M2.4 2.4l3.4 3.4M11.6 11.6L8.2 8.2" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 /** Author, sha, the source link where one exists, and the long body on request. */
 function CommitMeta({
   commit,
@@ -313,7 +412,8 @@ function CommitMeta({
 
   return (
     <>
-      <p className={styles.meta}>
+      <div className={styles.metaRow}>
+        <p className={styles.meta}>
         <span className={styles.metaAuthor}>{commit.author.name}</span>
         <span className={styles.dot} aria-hidden="true">
           ·
@@ -355,13 +455,11 @@ function CommitMeta({
         ) : null}
       </p>
 
-      {open && commit.body ? <CommitBody body={commit.body} /> : null}
-
-      {/*
-       * One line of arithmetic, from this commit's own diff. Not a summary of
-       * what the commit "achieved" — nothing here is generated.
-       */}
-      <p className={styles.summary}>
+        {/*
+         * One line of arithmetic, from this commit's own diff. Not a summary of
+         * what the commit "achieved" — nothing here is generated.
+         */}
+        <p className={styles.summary}>
         {detail ? (
           <>
             <span className="tabular">
@@ -382,7 +480,10 @@ function CommitMeta({
             {detailPending ? 'Loading the file changes for this commit…' : 'File changes for this commit not loaded'}
           </span>
         )}
-      </p>
+        </p>
+      </div>
+
+      {open && commit.body ? <CommitBody body={commit.body} /> : null}
     </>
   );
 }

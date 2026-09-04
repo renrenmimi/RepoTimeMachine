@@ -5,6 +5,7 @@ import {
   collectProblems,
   commitSubject,
   demoButton,
+  expandToggle,
   expectNoForeignGitHubLinks,
   expectNoHorizontalOverflow,
   expectNoPageScroll,
@@ -16,6 +17,7 @@ import {
   withThemeControl,
   openRepo,
   quotaMeter,
+  readingShare,
   REPOS,
   repoUrl,
   subTab,
@@ -729,6 +731,84 @@ test.describe('layout', () => {
     await page.mouse.wheel(0, 600);
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  });
+
+  /*
+   * The reading area is the product, and it used to be the last thing served:
+   * the chrome above it cost a fixed ~628px whatever the window was, so a
+   * 1280x720 laptop was left about 90px of file tree — two rows, and no room at
+   * all for a diff. These assertions are a budget, not a pixel snapshot: they
+   * fail if the chrome starts creeping back.
+   */
+  for (const size of [
+    { width: 1440, height: 900, floor: 0.38 },
+    { width: 1366, height: 768, floor: 0.34 },
+    { width: 1280, height: 720, floor: 0.3 },
+  ]) {
+    const at = `${size.width}x${size.height}`;
+    test(`gives the file tree a usable share of a ${at} window`, async ({ page }) => {
+      await page.setViewportSize({ width: size.width, height: size.height });
+      await openRepo(page, REPOS.demo);
+      await page.getByRole('slider', { name: /Commit position/ }).fill('9');
+      await page.waitForTimeout(900);
+
+      const share = await readingShare(page);
+      expect(share, `${at}: the tree should get at least ${size.floor * 100}% of the window`).toBeGreaterThan(
+        size.floor,
+      );
+
+      // And expanding must roughly halve what the chrome keeps.
+      await expandToggle(page).click();
+      await page.waitForTimeout(400);
+      const expanded = await readingShare(page);
+      expect(expanded, `${at}: expanded should beat collapsed`).toBeGreaterThan(share + 0.1);
+      expect(expanded, `${at}: expanded should clear half the window`).toBeGreaterThan(0.5);
+      await expectNoPageScroll(page, `${at} expanded`);
+      await expectNoHorizontalOverflow(page);
+    });
+  }
+
+  test('expanding keeps you oriented, and keeps you moving', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openRepo(page, REPOS.demo);
+    await page.getByRole('slider', { name: /Commit position/ }).fill('5');
+    await page.waitForTimeout(800);
+
+    await expandToggle(page).click();
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'true');
+
+    // The heading and the player are gone; where you are and what this is are not.
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeHidden();
+    await expect(page.locator('#replay-position')).toContainText('Commit 6 of 16');
+    await expect(page.locator('#selected-commit-subject')).toBeVisible();
+
+    // Stepping still works from the strip.
+    await page.getByRole('button', { name: 'Next commit' }).click();
+    await expect(page.locator('#replay-position')).toContainText('Commit 7 of 16');
+    await page.getByRole('button', { name: 'Previous commit' }).click();
+    await expect(page.locator('#replay-position')).toContainText('Commit 6 of 16');
+
+    // And collapsing puts everything back.
+    await expandToggle(page).click();
+    await expect(page.getByRole('slider', { name: /Commit position/ })).toBeVisible();
+    await expect(transport(page).play).toBeVisible();
+    await expect(page.locator('#replay-position')).toContainText('Commit 6 of 16');
+  });
+
+  test('the expanded reading area survives a trip to another view', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openRepo(page, REPOS.demo);
+    await expandToggle(page).click();
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'true');
+
+    await viewTab(page, 'Insights').click();
+    await page.waitForTimeout(900);
+    await viewTab(page, 'Replay').click();
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'true');
+
+    // A different repository is a different reading, so it starts collapsed.
+    await openRepo(page, REPOS.tiny);
+    await expect(expandToggle(page)).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('reports no console errors while browsing a repository', async ({ page }) => {

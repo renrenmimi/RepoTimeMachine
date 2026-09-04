@@ -63,6 +63,7 @@ export function TimeMachine() {
   const [subView, setSubView] = useState<SubView>('repository');
   const [diffFocus, setDiffFocus] = useState<{ path: string } | null>(null);
   const [openedDiff, setOpenedDiff] = useState<OpenedDiff | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [treeView, setTreeView] = useState<TreeViewState>(EMPTY_TREE_VIEW);
 
   const playback = state.playback;
@@ -141,6 +142,7 @@ export function TimeMachine() {
       setSubView('repository');
       setDiffFocus(null);
       setOpenedDiff(null);
+      setExpanded(false);
       setTreeView(EMPTY_TREE_VIEW);
       void controller.load(ref);
     },
@@ -327,6 +329,12 @@ export function TimeMachine() {
           break;
         case ']':
           dispatch({ type: 'setSpeed', speed: nextSpeed(playback.speed, 1) });
+          break;
+        case 'f':
+        case 'F':
+          // The same toggle as the button, for somebody already on the keyboard.
+          event.preventDefault();
+          setExpanded((current) => !current);
           break;
         case '/': {
           const filter = document.getElementById('tree-filter');
@@ -526,6 +534,8 @@ export function TimeMachine() {
                 diffFocus={diffFocus}
                 openedDiff={openedDiff}
                 onOpenedDiff={setOpenedDiff}
+                expanded={expanded}
+                onExpanded={setExpanded}
                 onDiffFocus={setDiffFocus}
                 treeView={treeView}
                 onTreeView={setTreeView}
